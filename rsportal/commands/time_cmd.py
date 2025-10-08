@@ -1,15 +1,14 @@
-# rsportal/commands/time_cmd.py
-import json
-from pathlib import Path
 from datetime import datetime
 import sys
 from utils import require_auth
+from rsportal.storage import load_time, save_time, ensure_storage_migration
+from rsportal.editor import open_editor
 
 TIME_FILE = Path.home() / ".rsportal" / "time.json"
-TIME_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def handle(args):
+    ensure_storage_migration()
     # Require authentication for time tracking
     require_auth()
 
@@ -20,7 +19,7 @@ def handle(args):
         do_start(task_id)
         return
     elif getattr(args, "time_cmd", None) == "stop":
-        do_stop(task_id)
+        do_stop(task_id, getattr(args, "notes", None))
         return
     elif getattr(args, "time_cmd", None) == "status":
         do_status(task_id)
@@ -31,7 +30,7 @@ def handle(args):
         do_start(task_id)
         return
     elif getattr(args, "stop", False):
-        do_stop(task_id)
+        do_stop(task_id, getattr(args, "notes", None))
         return
     elif getattr(args, "status", False):
         do_status(task_id)
@@ -42,20 +41,11 @@ def handle(args):
 
 
 def load_time_data():
-    """Load time tracking data from file"""
-    if not TIME_FILE.exists():
-        return {}
-    try:
-        with open(TIME_FILE, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return {}
+    return load_time()
 
 
 def save_time_data(data):
-    """Save time tracking data to file"""
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    save_time(data)
 
 
 def get_running_tasks(data):
@@ -96,18 +86,18 @@ def do_start(task_id):
         return
 
     # Start new entry for this task
-    start_time = datetime.now().isoformat()
-    data[task_id].append({"start": start_time, "stop": None})
+    start_time_str = datetime.now().isoformat()
+    data[task_id].append({"start_time": start_time_str, "end_time": None})
 
     save_time_data(data)
 
     if stopped_tasks:
         print(f"\nStopped tasks: {', '.join(stopped_tasks)}")
     print(f"Started tracking task: {task_id}")
-    print(f"Started at: {start_time}\n")
+    print(f"Started at: {start_time_str}\n")
 
 
-def do_stop(task_id=None):
+def do_stop(task_id=None, notes=None):
     data = load_time_data()
 
     if not data:
@@ -127,7 +117,15 @@ def do_stop(task_id=None):
             return
 
         current_time = datetime.now().isoformat()
-        data[task_id][-1]["stop"] = current_time
+        # Notes: use provided, else prompt via editor
+        entry = data[task_id][-1]
+        if notes is None:
+            initial = (entry.get("notes") or "").strip()
+            content = open_editor(initial)
+            notes = content.strip()
+        entry["end_time"] = current_time
+        if notes is not None:
+            entry["notes"] = notes
         save_time_data(data)
         print(f"\nStopped task: {task_id}")
         print(f"Stopped at: {current_time}\n")
@@ -135,7 +133,16 @@ def do_stop(task_id=None):
         # Stop all running tasks
         current_time = datetime.now().isoformat()
         for running_id in running_tasks:
-            data[running_id][-1]["stop"] = current_time
+            entry = data[running_id][-1]
+            if notes is None:
+                initial = (entry.get("notes") or "").strip()
+                content = open_editor(initial)
+                notes_val = content.strip()
+            else:
+                notes_val = notes
+            entry["end_time"] = current_time
+            if notes_val is not None:
+                entry["notes"] = notes_val
 
         save_time_data(data)
         print(f"\nStopped all running tasks: {', '.join(running_tasks)}")
@@ -165,7 +172,7 @@ def format_duration(start_str, stop_str=None):
         else:
             return f"{seconds}s"
     except:
-        return "Invalid duration"
+            return "Invalid duration"
 
 
 def do_status(task_id=None):
@@ -191,8 +198,8 @@ def do_status(task_id=None):
 
         total_duration = 0
         for i, entry in enumerate(entries, 1):
-            start = entry["start"]
-            stop = entry.get("stop")
+        start = entry.get("start_time") or entry.get("start")
+        stop = entry.get("end_time") or entry.get("stop")
             duration = format_duration(start, stop)
             status = "RUNNING" if stop is None else "STOPPED"
 
@@ -208,10 +215,10 @@ def do_status(task_id=None):
                     pass
 
         # Add current running time if applicable
-        running_entry = next((e for e in entries if e.get("stop") is None), None)
+        running_entry = next((e for e in entries if e.get("end_time") is None), None)
         if running_entry:
             try:
-                start_dt = datetime.fromisoformat(running_entry["start"])
+                start_dt = datetime.fromisoformat(running_entry.get("start_time") or running_entry.get("start"))
                 current_duration = (datetime.now() - start_dt).total_seconds()
                 total_duration += current_duration
             except:

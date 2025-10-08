@@ -1,9 +1,15 @@
 # rsportal/commands/push_cmd.py
-import json
 import keyring
 from pathlib import Path
 from datetime import datetime
 from utils import require_auth
+from rsportal.storage import (
+    load_time,
+    save_time,
+    load_sync_log,
+    save_sync_log,
+    load_tasks,
+)
 
 try:
     import requests
@@ -14,7 +20,6 @@ except ImportError:
 
 SERVICE_NAME = "rsportal"
 TIME_FILE = Path.home() / ".rsportal" / "time.json"
-SYNC_LOG_FILE = Path.home() / ".rsportal" / "sync_log.json"
 AUTH_FILE = Path.home() / ".rsportal" / "auth.json"
 
 # Ensure directories exist
@@ -46,37 +51,19 @@ def handle(args):
 
 
 def load_time_data():
-    """Load time tracking data from file"""
-    if not TIME_FILE.exists():
-        return {}
-    try:
-        with open(TIME_FILE, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return {}
+    return load_time()
 
 
 def save_time_data(data):
-    """Save time tracking data to file"""
-    with open(TIME_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    save_time(data)
 
 
-def load_sync_log():
-    """Load sync log data"""
-    if not SYNC_LOG_FILE.exists():
-        return {"last_sync": None, "synced_entries": [], "failed_entries": []}
-    try:
-        with open(SYNC_LOG_FILE, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return {"last_sync": None, "synced_entries": [], "failed_entries": []}
+def load_sync_log_local():
+    return load_sync_log()
 
 
-def save_sync_log(sync_log):
-    """Save sync log data"""
-    with open(SYNC_LOG_FILE, "w") as f:
-        json.dump(sync_log, f, indent=2)
+def save_sync_log_local(sync_log):
+    save_sync_log(sync_log)
 
 
 def get_auth_credentials():
@@ -99,18 +86,21 @@ def get_auth_credentials():
 
 
 def get_completed_entries(time_data):
-    """Get all completed time entries (those with both start and stop times)"""
+    """Get all completed time entries (those with both start and end times)."""
     completed_entries = []
 
     for task_id, entries in time_data.items():
         for entry in entries:
-            if entry.get("start") and entry.get("stop"):
+            start_val = entry.get("start_time") or entry.get("start")
+            stop_val = entry.get("end_time") or entry.get("stop")
+            if start_val and stop_val:
                 completed_entries.append(
                     {
                         "task_id": task_id,
-                        "start": entry["start"],
-                        "stop": entry["stop"],
-                        "duration": calculate_duration(entry["start"], entry["stop"]),
+                        "start_time": start_val,
+                        "end_time": stop_val,
+                        "notes": entry.get("notes", ""),
+                        "duration": calculate_duration(start_val, stop_val),
                     }
                 )
 
@@ -141,7 +131,7 @@ def sync_to_remote(entries, username, password):
         try:
             # Simulate API call delay and processing
             print(
-                f"  Syncing task {entry['task_id']}: {entry['start']} - {entry['stop']}"
+                f"  Syncing task {entry['task_id']}: {entry['start_time']} - {entry['end_time']}"
             )
 
             # Mock API call - replace with actual implementation
@@ -218,6 +208,7 @@ def do_sync():
 
     # Load current time data
     time_data = load_time_data()
+    tasks_data = load_tasks()
 
     if not time_data:
         print("No time tracking data found to sync.\n")
@@ -232,11 +223,34 @@ def do_sync():
     # Get completed entries that need to be synced
     completed_entries = get_completed_entries(time_data)
 
+    # Enforce: Task must have both title and objective to be pushed
+    valid_task_ids = set()
+    for t in tasks_data or []:
+        tid = t.get("id")
+        title = (t.get("title") or "").strip()
+        objective = (t.get("objective") or "").strip()
+        if tid and title and objective:
+            valid_task_ids.add(tid)
+
+    pre_filter_count = len(completed_entries)
+    completed_entries = [
+        e for e in completed_entries if e.get("task_id") in valid_task_ids
+    ]
+    skipped_count = pre_filter_count - len(completed_entries)
+
     if not completed_entries:
-        print("No completed time entries found to sync.\n")
+        if skipped_count > 0:
+            print(
+                "No eligible entries to sync. Ensure tasks have both title and description."
+            )
+        else:
+            print("No completed time entries found to sync.")
+        print()
         return
 
     print(f"Found {len(completed_entries)} completed entries to sync.")
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} entries (missing task title/description).")
 
     # Check for any currently running tasks
     running_tasks = []
@@ -256,11 +270,11 @@ def do_sync():
     )
 
     # Update sync log
-    sync_log = load_sync_log()
+    sync_log = load_sync_log_local()
     sync_log["last_sync"] = datetime.now().isoformat()
     sync_log["synced_entries"].extend(synced_entries)
     sync_log["failed_entries"].extend(failed_entries)
-    save_sync_log(sync_log)
+    save_sync_log_local(sync_log)
 
     # Report results
     print(f"\nSync completed:")
