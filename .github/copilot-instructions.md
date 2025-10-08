@@ -40,6 +40,10 @@ def handle(args):
 3. Set `parser.set_defaults(func=new_cmd.handle)`
 4. Import the command module in `cli.py`
 
+### Showing Help
+- Use `show_help()` function in command modules to print usage
+- Help flags (`-h`, `--help`) are automatically handled by argparse
+
 ### Error Handling
 - Use `exit(1)` for authentication failures (see `utils.require_auth()`)
 - Print user-friendly messages with newlines: `print("\nMessage\n")`
