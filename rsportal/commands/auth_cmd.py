@@ -10,7 +10,10 @@ CRED_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def handle(args):
-    # Route subcommands if provided (rsportal auth login/logout/status)
+    if getattr(args, "help", False):
+        show_help()
+        return
+
     if getattr(args, "auth_cmd", None) == "login":
         login()
         return
@@ -102,3 +105,36 @@ def is_logged_in():
     active_user = data.get("active_user")
     username = active_user.get("username") if isinstance(active_user, dict) else None
     return bool(username)
+
+
+def show_help():
+    help_text = """
+        RSportal Auth Commands:
+
+        Usage:
+        rsportal auth [subcommand]
+        rsportal auth [flags]
+
+        Subcommands:
+        login         Login to RSportal with your credentials
+        logout        Logout from RSportal and clear stored credentials  
+        status        Check current authentication status
+
+        Flags (backward compatibility):
+        --login       Login to RSportal with your credentials
+        --logout      Logout from RSportal and clear stored credentials
+        --status      Check current authentication status
+        -h, --help    Show this help message
+
+        Examples:
+        rsportal auth login         # Login using subcommand
+        rsportal auth --login       # Login using flag (backward compatibility)
+        rsportal auth status        # Check auth status
+        rsportal auth -h            # Show this help
+        rsportal auth --help        # Show this help
+
+        Default behavior:
+        If no subcommand or flag is provided, the command will prompt for login
+        if not authenticated, or show current status if already logged in.
+    """
+    print(help_text)
