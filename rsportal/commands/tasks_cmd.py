@@ -2,6 +2,7 @@ from utils import require_auth
 from rsportal.storage import load_tasks, save_tasks
 from rsportal.editor import open_editor, parse_title_and_description
 from datetime import datetime
+from utils import get_api_base
 
 
 def handle(args):
@@ -118,15 +119,21 @@ def do_review(task_id, pm, cto):
 
 def try_request_review(task_id, new_status):
     try:
-        import os, requests
+        import requests
 
-        base = os.environ.get("RSPORTAL_API_BASE", "https://api.example.com").rstrip(
-            "/"
-        )
+        base = get_api_base()
         url = f"{base}/tasks/{task_id}/status"
         payload = {"status": new_status}
-        # TODO: add auth headers if required
-        resp = requests.post(url, json=payload, timeout=30)
+        from utils import get_authed_session, get_basic_auth
+
+        session = get_authed_session()
+        if session is not None:
+            resp = session.post(url, json=payload, timeout=30)
+        else:
+            auth = get_basic_auth()
+            resp = requests.post(
+                url, json=payload, timeout=30, auth=auth if all(auth) else None
+            )
         if resp.status_code in (200, 204):
             print("Server updated successfully.\n")
         else:

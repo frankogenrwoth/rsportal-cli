@@ -15,6 +15,7 @@ def main():
     auth_subparsers.add_parser("login", help="Login to RSportal.")
     auth_subparsers.add_parser("logout", help="Logout from RSportal.")
     auth_subparsers.add_parser("status", help="Show current auth status.")
+    auth_subparsers.add_parser("verify", help="Verify credentials with the server.")
 
     auth_parser.add_argument("--login", action="store_true", help="Login to RSportal.")
     auth_parser.add_argument(

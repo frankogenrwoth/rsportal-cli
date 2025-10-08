@@ -1,13 +1,13 @@
 ## Configuration
 
-- Environment variables:
-  - `RSPORTAL_API_BASE`: Base URL for the RSportal API (e.g., https://api.example.com)
-  - `EDITOR`: Editor to use for multi-line input (falls back to Notepad on Windows)
+Use a `.env` file (python-dotenv is loaded automatically):
 
-Windows PowerShell examples:
 ```
-$env:RSPORTAL_API_BASE = "https://api.example.com"
-$env:EDITOR = "code"
+# .env
+RSPORTAL_BASE_URL=https://localhost:8000
+EDITOR=notepad
 ```
 
-Persist in PowerShell profile if desired.
+Notes:
+- API base is resolved as `BASE_URL/api/v1` where `BASE_URL` comes from `RSPORTAL_BASE_URL` (preferred) or `RSPORTAL_API_BASE` for backward compatibility.
+- You can still override via OS environment variables.

@@ -3,6 +3,8 @@ import keyring
 import getpass
 import json
 from pathlib import Path
+import os
+from utils import get_api_base
 
 SERVICE_NAME = "rsportal"
 CRED_FILE = Path.home() / ".rsportal" / "auth.json"
@@ -22,6 +24,9 @@ def handle(args):
         return
     if getattr(args, "auth_cmd", None) == "status":
         check_auth()
+        return
+    if getattr(args, "auth_cmd", None) == "verify":
+        verify()
         return
 
     # Backward compatibility: flags still work
@@ -46,8 +51,8 @@ def login():
     username = input("Username: ")
     password = getpass.getpass("Password: ")
 
-    # Example validation (in a real app, you'd call your API here)
-    if username and password:
+    # Verify with backend if possible
+    if username and password and verify_credentials(username, password):
         keyring.set_password(SERVICE_NAME, username, password)
 
         # Save the active user info
@@ -93,6 +98,41 @@ def check_auth():
         print("\nNo user logged in. Use 'rsportal auth --login' first.\n")
         return
     print(f"\nLogged in as: {username}\n")
+
+
+def verify():
+    if not CRED_FILE.exists():
+        print("\nNo credentials saved. Use 'rsportal auth login' first.\n")
+        return
+    try:
+        data = json.loads(CRED_FILE.read_text())
+    except Exception:
+        print("\nAuth data is corrupted.\n")
+        return
+    active_user = data.get("active_user") or {}
+    username = active_user.get("username")
+    if not username:
+        print("\nNo user logged in.\n")
+        return
+    password = keyring.get_password(SERVICE_NAME, username)
+    if not password:
+        print("\nPassword not found in keyring. Re-login.\n")
+        return
+    ok = verify_credentials(username, password)
+    print("\nCredentials valid.\n" if ok else "\nInvalid credentials.\n")
+
+
+def verify_credentials(username: str, password: str) -> bool:
+    try:
+        import requests
+
+        base = get_api_base()
+        url = f"{base}/auth/check"
+        resp = requests.get(url, auth=(username, password), timeout=15)
+        return resp.status_code in (200, 204)
+    except Exception:
+        # If server unreachable, fallback to basic local check
+        return bool(username and password)
 
 
 def is_logged_in():

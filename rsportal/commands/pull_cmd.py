@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Any
 from utils import require_auth
 from rsportal.storage import load_tasks, save_tasks, ensure_storage_migration
+from utils import get_api_base, get_basic_auth, get_authed_session
 
 try:
     import requests
@@ -25,20 +26,22 @@ def handle(args):
     show_help()
 
 
-def get_api_base() -> str:
-    return os.environ.get("RSPORTAL_API_BASE", "https://api.example.com")
-
-
 def pull_tasks():
     if not HAS_REQUESTS:
         print("\nError: 'requests' not installed. Install with: pip install requests\n")
         return
 
     base = get_api_base()
-    url = f"{base.rstrip('/')}/tasks/assigned"
+    url = f"{base}/tasks/assigned"
 
     try:
-        resp = requests.get(url, timeout=30)
+        session = get_authed_session()
+        if session is not None:
+            resp = session.get(url, timeout=30)
+        else:
+            # Fallback: unauthenticated or basic (if server accepts)
+            auth = get_basic_auth()
+            resp = requests.get(url, timeout=30, auth=auth if all(auth) else None)
         if resp.status_code != 200:
             print(f"\nFailed to pull tasks: HTTP {resp.status_code}\n")
             return

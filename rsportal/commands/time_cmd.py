@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 import sys
 from utils import require_auth
 from rsportal.storage import load_time, save_time, ensure_storage_migration
@@ -52,7 +53,7 @@ def get_running_tasks(data):
     """Get list of currently running tasks"""
     running = []
     for task_id, entries in data.items():
-        if entries and entries[-1].get("stop") is None:
+        if entries and entries[-1].get("end_time") is None:
             running.append(task_id)
     return running
 
@@ -73,7 +74,7 @@ def do_start(task_id):
         if running_id != task_id:
             # Stop the running task
             current_time = datetime.now().isoformat()
-            data[running_id][-1]["stop"] = current_time
+            data[running_id][-1]["end_time"] = current_time
             stopped_tasks.append(running_id)
 
     # Initialize task if it doesn't exist
@@ -172,7 +173,7 @@ def format_duration(start_str, stop_str=None):
         else:
             return f"{seconds}s"
     except:
-            return "Invalid duration"
+        return "Invalid duration"
 
 
 def do_status(task_id=None):
@@ -198,8 +199,8 @@ def do_status(task_id=None):
 
         total_duration = 0
         for i, entry in enumerate(entries, 1):
-        start = entry.get("start_time") or entry.get("start")
-        stop = entry.get("end_time") or entry.get("stop")
+            start = entry.get("start_time") or entry.get("start")
+            stop = entry.get("end_time") or entry.get("stop")
             duration = format_duration(start, stop)
             status = "RUNNING" if stop is None else "STOPPED"
 
@@ -218,7 +219,9 @@ def do_status(task_id=None):
         running_entry = next((e for e in entries if e.get("end_time") is None), None)
         if running_entry:
             try:
-                start_dt = datetime.fromisoformat(running_entry.get("start_time") or running_entry.get("start"))
+                start_dt = datetime.fromisoformat(
+                    running_entry.get("start_time") or running_entry.get("start")
+                )
                 current_duration = (datetime.now() - start_dt).total_seconds()
                 total_duration += current_duration
             except:
@@ -252,7 +255,7 @@ def do_status(task_id=None):
         for task_id, entries in data.items():
             if entries:
                 latest = entries[-1]
-                status = "RUNNING" if latest.get("stop") is None else "STOPPED"
+                status = "RUNNING" if latest.get("end_time") is None else "STOPPED"
                 entry_count = len(entries)
                 print(f"  {task_id}: {entry_count} entries, {status}")
 
