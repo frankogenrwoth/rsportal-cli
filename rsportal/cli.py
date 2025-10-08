@@ -1,5 +1,5 @@
 import argparse
-from rsportal.commands import auth_cmd, time_cmd
+from rsportal.commands import auth_cmd, time_cmd, push_cmd
 
 
 def main():
@@ -51,6 +51,23 @@ def main():
         "-t", "--task-id", dest="task_id", help="Task ID for time tracking operations."
     )
     time_parser.set_defaults(func=time_cmd.handle)
+
+    # rsportal push
+    push_parser = subparsers.add_parser(
+        "push",
+        help="Sync local time entries to remote server and manage sync operations.",
+    )
+    push_subparsers = push_parser.add_subparsers(dest="push_cmd")
+    push_subparsers.add_parser("sync", help="Sync local time entries to remote server.")
+    push_subparsers.add_parser("status", help="Show sync status and history.")
+
+    push_parser.add_argument(
+        "--sync", action="store_true", help="Sync local time entries to remote server."
+    )
+    push_parser.add_argument(
+        "--status", action="store_true", help="Show sync status and history."
+    )
+    push_parser.set_defaults(func=push_cmd.handle)
 
     args = parser.parse_args()
 

@@ -8,7 +8,6 @@ rsportal/
 │  ├─ commands/
 │  │   ├─ __init__.py
 │  │   ├─ time_cmd.py
-│  │   ├─ commit_cmd.py
 │  │   ├─ log_cmd.py
 │  │   ├─ tasks_cmd.py
 │  │   └─ push_cmd.py
