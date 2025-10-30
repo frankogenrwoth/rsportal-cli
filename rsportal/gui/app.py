@@ -2,16 +2,15 @@ import sys
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
+from rsportal.gui.home_view import HomeView
+from rsportal import storage_sqlite
+from utils import is_authenticated
 
 # Ensure project root is on sys.path so absolute imports work when running this file directly
 _HERE = Path(__file__).resolve()
 _PROJECT_ROOT = str(_HERE.parents[2])
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
-
-from rsportal.gui.home_view import HomeView
-from rsportal import storage_sqlite
-from utils import is_authenticated
 
 
 def run_app():

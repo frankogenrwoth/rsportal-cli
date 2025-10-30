@@ -1,7 +1,7 @@
 import sqlite3
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from . import __init__ as _pkg  # noqa: F401 (keep package context)
 from utils import get_api_base, get_basic_auth, get_authed_session
@@ -10,14 +10,14 @@ from utils import get_api_base, get_basic_auth, get_authed_session
 DB_PATH = Path.home() / ".rsportal" / "rsportal.db"
 
 
-def _conn():
+def _conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def init_db():
+def init_db() -> None:
     conn = _conn()
     cur = conn.cursor()
     # tasks table
@@ -55,6 +55,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS time_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id TEXT,
+        user TEXT,
         start_time TEXT,
         end_time TEXT,
         notes TEXT,
@@ -63,7 +64,6 @@ def init_db():
     )
     """
     )
-
     # comments
     cur.execute(
         """
@@ -72,19 +72,8 @@ def init_db():
         task_id TEXT,
         author TEXT,
         comment TEXT,
-        created_at TEXT DEFAULT (datetime('now'))
-    )
-    """
-    )
-
-    # docs
-    cur.execute(
-        """
-    CREATE TABLE IF NOT EXISTS docs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_id TEXT,
-        payload TEXT,
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TEXT DEFAULT (datetime('now')),
+        synced INTEGER DEFAULT 0
     )
     """
     )
@@ -96,6 +85,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
         password TEXT,
+        email TEXT,
         active INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
     )
@@ -106,17 +96,22 @@ def init_db():
     conn.close()
 
 
-def get_saved_auth() -> Optional[Dict[str, str]]:
+def get_saved_auth() -> Union[None, Dict[str, str]]:
     """Return active saved auth from sqlite or None."""
-    conn = _conn()
-    cur = conn.cursor()
+    conn: sqlite3.Connection = _conn()
+    cur: sqlite3.Cursor = conn.cursor()
+
     cur.execute(
         "SELECT username, password FROM auth WHERE active = 1 ORDER BY id DESC LIMIT 1"
     )
-    r = cur.fetchone()
+
+    r: Union[None, sqlite3.Row] = cur.fetchone()
+
     conn.close()
+
     if not r:
         return None
+
     return {"username": r["username"], "password": r["password"]}
 
 
@@ -126,7 +121,22 @@ def save_auth(username: str, password: str, force: bool = False) -> bool:
     Returns True when saved/activated or already active with same creds.
     Returns False when there is an active different auth and force is False.
     """
-    existing = get_saved_auth()
+    # validate if user exists
+
+    try:
+        import requests
+    except Exception:
+        return False
+
+    base_url: str = get_api_base()
+    auth_url: str = f"{base_url}/auth/check"
+
+    resp = requests.get(auth_url, timeout=15, auth=(username, password))
+    if not resp.status_code in (200, 204):
+        return False
+
+    existing: Union[None, Dict[str, str]] = get_saved_auth()
+
     if existing and not force:
         # if same creds, consider success; if different, do not overwrite by default
         if (
@@ -136,16 +146,18 @@ def save_auth(username: str, password: str, force: bool = False) -> bool:
             return True
         return False
 
-    conn = _conn()
-    cur = conn.cursor()
+    conn: sqlite3.Connection = _conn()
+    cur: sqlite3.Cursor = conn.cursor()
+
     if existing:
         # mark others inactive
         cur.execute("UPDATE auth SET active = 0 WHERE active = 1")
-    # insert new auth as active
+
     cur.execute(
         "INSERT INTO auth (username, password, active) VALUES (?, ?, 1)",
         (username, password),
     )
+
     conn.commit()
     conn.close()
     return True
@@ -153,10 +165,10 @@ def save_auth(username: str, password: str, force: bool = False) -> bool:
 
 def clear_auth() -> bool:
     """Deactivate any active auth. Returns True if any were deactivated."""
-    conn = _conn()
-    cur = conn.cursor()
+    conn: sqlite3.Connection = _conn()
+    cur: sqlite3.Cursor = conn.cursor()
     cur.execute("SELECT COUNT(*) as c FROM auth WHERE active = 1")
-    r = cur.fetchone()
+    r: Union[None, sqlite3.Row] = cur.fetchone()
     if not r or r["c"] == 0:
         conn.close()
         return False
@@ -167,8 +179,8 @@ def clear_auth() -> bool:
 
 
 def upsert_tasks(tasks: List[Dict[str, Any]]):
-    conn = _conn()
-    cur = conn.cursor()
+    conn: sqlite3.Connection = _conn()
+    cur: sqlite3.Cursor = conn.cursor()
 
     def _norm_field(v: Any) -> Any:
         # Normalize values so sqlite bindings accept them: primitives pass through;
@@ -283,11 +295,11 @@ def refresh_tasks_from_remote() -> int:
     except Exception:
         return 0
 
-    base = get_api_base()
-    url = f"{base}/tasks/assigned"
+    base: str = get_api_base()
+    url: str = f"{base}/tasks/assigned"
     try:
         # Prefer saved sqlite auth (GUI-managed) when available
-        saved = get_saved_auth()
+        saved: Union[None, Dict[str, str]] = get_saved_auth()
 
         if saved:
             resp = requests.get(
