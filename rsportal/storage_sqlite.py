@@ -44,7 +44,8 @@ def init_db() -> None:
         cto_reviewer TEXT,
         created_at TEXT,
         updated_at TEXT,
-        local_notes TEXT
+        local_notes TEXT,
+        synced INTEGER DEFAULT 0
     )
     """
     )

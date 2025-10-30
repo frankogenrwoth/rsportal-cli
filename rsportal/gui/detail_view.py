@@ -1,3 +1,4 @@
+import json
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
@@ -20,10 +21,14 @@ class TaskDetailWindow(tk.Toplevel):
         }
 
         header = ttk.Frame(self)
-        header.pack(fill="x", padx=8, pady=8)
+        header.pack(fill="both", padx=8, pady=8)
+
+        # Stack labels vertically and left-align them
         ttk.Label(
-            header, text=self.task.get("title") or "(no title)", font=(None, 14, "bold")
-        ).pack(side="left")
+            header,
+            text=self.task.get("title") or "(no title)",
+            font=(None, 14, "bold"),
+        ).pack(side="left", anchor="w")
 
         self.timer_btn = ttk.Button(header, text="Start", command=self.toggle_timer)
         self.timer_btn.pack(side="right")
@@ -37,9 +42,59 @@ class TaskDetailWindow(tk.Toplevel):
         # Details tab
         details = ttk.Frame(tabs)
         tabs.add(details, text="Details")
-        ttk.Label(details, text=self.task.get("objective") or "").pack(
-            anchor="w", padx=8, pady=8
+
+        ttk.Label(
+            details,
+            text=f"Assignee: {json.loads(self.task.get('assignee')).get('username') or '(unassigned)'}",
+        ).pack(anchor="w", pady=(4, 0))
+        ttk.Label(
+            details,
+            text=f"Assigner: {json.loads(self.task.get('assigner')).get('username') or 'unknown'}",
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            details,
+            text=f"Project: {json.loads(self.task.get('project')).get('name') or ''}",
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            details,
+            text=f"Category: {self.task.get('category') or 'general'}",
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            details,
+            text=f"Urgency: {self.task.get('urgency') or 'normal'}",
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            details,
+            text=f"Deadline: {self.task.get('deadline') or 'none'}",
+        ).pack(anchor="w", pady=(2, 0))
+
+        status_options = [
+            "TODO",
+            "IN_PROGRESS",
+            "BLOCKED",
+            "PM_REVIEW",
+            "CTO_REVIEW",
+            "COMPLETED",
+        ]
+
+        self.status_frame = ttk.Frame(details)
+        self.status_frame.pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            self.status_frame,
+            text=f"Status: ",
+        ).pack(side="left", pady=(2, 0))
+
+        self.status_cb = ttk.Combobox(
+            self.status_frame,
+            values=status_options,
+            state="readonly",
+            width=16,
         )
+        # set initial value explicitly
+        self.status_cb.set(self.task.get("status") or "TODO")
+        self.status_cb.pack(side="right", pady=(2, 8))
+        # Persist status changes when user picks a new value
+        self.status_cb.bind("<<ComboboxSelected>>", self.on_status_change)
 
         # Time entries tab
         te_frame = ttk.Frame(tabs)
@@ -54,6 +109,9 @@ class TaskDetailWindow(tk.Toplevel):
         self.comment_txt.pack(fill="x", padx=8, pady=8)
         add_c_btn = ttk.Button(cm_frame, text="Add Comment", command=self.add_comment)
         add_c_btn.pack(padx=8, pady=4)
+
+        documentation_frame = ttk.Frame(tabs)
+        tabs.add(documentation_frame, text="Documentation")
 
         self._timer_running = False
         self._timer_start_ts = None
@@ -77,6 +135,17 @@ class TaskDetailWindow(tk.Toplevel):
                 except Exception:
                     dur = f"{start} -> {end}"
             self.te_list.insert(tk.END, f"{start} - {end or 'running'} ({dur})")
+        
+    def on_status_change(self, event=None):
+        """Handler called when the status combobox value changes. Update local task
+        dict and persist to sqlite using storage_sqlite.upsert_tasks.
+        """
+        new_status = self.status_cb.get()
+        self.task["status"] = new_status
+        try:
+            storage_sqlite.upsert_tasks([self.task])
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save status: {e}")
 
     def add_comment(self):
         txt = self.comment_txt.get("1.0", tk.END).strip()
