@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from rsportal import storage_sqlite
 
 
@@ -96,11 +96,27 @@ class TaskDetailWindow(tk.Toplevel):
         # Persist status changes when user picks a new value
         self.status_cb.bind("<<ComboboxSelected>>", self.on_status_change)
 
-        # Time entries tab
+        # Time entries tab - show as a table (Treeview) with columns: Start, End, Duration, Notes
         te_frame = ttk.Frame(tabs)
         tabs.add(te_frame, text="Time Entries")
-        self.te_list = tk.Listbox(te_frame)
-        self.te_list.pack(fill="both", expand=True, padx=8, pady=8)
+        cols = ("synced", "start", "end", "duration", "notes")
+        self.te_tree = ttk.Treeview(
+            te_frame, columns=cols, show="headings", selectmode="browse"
+        )
+        self.te_tree.heading("synced", text="Synced")
+        self.te_tree.heading("start", text="Start")
+        self.te_tree.heading("end", text="End")
+        self.te_tree.heading("duration", text="Duration")
+        self.te_tree.heading("notes", text="Notes")
+        self.te_tree.column("synced", width=80, anchor="center")
+        self.te_tree.column("start", width=160, anchor="w")
+        self.te_tree.column("end", width=160, anchor="w")
+        self.te_tree.column("duration", width=120, anchor="center")
+        self.te_tree.column("notes", width=240, anchor="w")
+        vsb = ttk.Scrollbar(te_frame, orient="vertical", command=self.te_tree.yview)
+        self.te_tree.configure(yscroll=vsb.set)
+        self.te_tree.pack(fill="both", expand=True, side="left", padx=8, pady=8)
+        vsb.pack(fill="y", side="right", pady=8)
 
         # Comments tab
         cm_frame = ttk.Frame(tabs)
@@ -120,22 +136,54 @@ class TaskDetailWindow(tk.Toplevel):
         self.load_time_entries()
 
     def load_time_entries(self):
-        self.te_list.delete(0, tk.END)
+        # Populate the Treeview with time entries from sqlite
+        # Clear existing
+        for iid in list(self.te_tree.get_children()):
+            self.te_tree.delete(iid)
         entries = storage_sqlite.get_time_entries(self.task_id)
         for e in entries:
             start = e.get("start_time")
             end = e.get("end_time")
             dur = "-"
+            start_fmt = ""
+            end_fmt = ""
+            if start:
+                try:
+                    s = datetime.fromisoformat(start.replace("Z", ""))
+                    start_fmt = s.strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    start_fmt = start
+            if end:
+                try:
+                    en = datetime.fromisoformat(end.replace("Z", ""))
+                    end_fmt = en.strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    end_fmt = end
+            else:
+                end_fmt = "running"
+
             if start and end:
                 try:
                     s = datetime.fromisoformat(start.replace("Z", ""))
                     en = datetime.fromisoformat(end.replace("Z", ""))
                     dd = en - s
-                    dur = str(dd)
+                    # format duration as H:MM or X days, H:MM:SS when long
+                    if dd.days:
+                        dur = str(dd)
+                    else:
+                        hrs = int(dd.total_seconds() // 3600)
+                        mins = int((dd.total_seconds() % 3600) // 60)
+                        dur = f"{hrs}h {mins}m"
                 except Exception:
                     dur = f"{start} -> {end}"
-            self.te_list.insert(tk.END, f"{start} - {end or 'running'} ({dur})")
-        
+
+            notes = e.get("notes") or ""
+            synced = "online" if e.get("synced") == 1 else "offline"
+            iid = str(e.get("id") or f"row-{len(entries)}")
+            self.te_tree.insert(
+                "", "end", iid=iid, values=(synced, start_fmt, end_fmt, dur, notes)
+            )
+
     def on_status_change(self, event=None):
         """Handler called when the status combobox value changes. Update local task
         dict and persist to sqlite using storage_sqlite.upsert_tasks.
@@ -181,18 +229,10 @@ class TaskDetailWindow(tk.Toplevel):
         else:
             # stop last running entry for this task
             now = datetime.utcnow().isoformat() + "Z"
-            # update latest entry with null end_time
-            conn = storage_sqlite._conn()
-            cur = conn.cursor()
-            cur.execute(
-                "UPDATE time_entries SET end_time = ? WHERE task_id = ? AND end_time IS NULL",
-                (now, self.task_id),
-            )
-            conn.commit()
-            conn.close()
-            self._timer_running = False
-            self.timer_btn.config(text="Start")
-            self.load_time_entries()
+            # Ask user for optional notes and allow adjusting duration (hours/minutes)
+            # Stopping time (now) is used as the reference point; the user edits hours/minutes
+            # which adjusts the start_time relative to now.
+            self.stop_entry_with_dialog(now)
 
     def _tick_loop(self):
         while self._timer_running:
@@ -219,6 +259,100 @@ class TaskDetailWindow(tk.Toplevel):
             except Exception:
                 pass
             time.sleep(1)
+
+    def stop_entry_with_dialog(self, now_iso: str):
+        """Show a modal dialog when stopping the running timer to collect notes and
+        an hours/minutes adjustment. Compute start_time = now - (hours,minutes) and
+        update the DB row for the running entry.
+        """
+        # find running entry
+        entries = storage_sqlite.get_time_entries(self.task_id)
+        running = None
+        for e in entries:
+            if not e.get("end_time"):
+                running = e
+                break
+        if not running:
+            messagebox.showinfo("No running entry", "No running time entry to stop.")
+            return
+
+        # prepare defaults
+        now_dt = datetime.fromisoformat(now_iso.replace("Z", ""))
+        default_h = 0
+        default_m = 0
+        if running.get("start_time"):
+            try:
+                s = datetime.fromisoformat(running.get("start_time").replace("Z", ""))
+                delta = now_dt - s
+                default_h = int(delta.total_seconds() // 3600)
+                default_m = int((delta.total_seconds() % 3600) // 60)
+            except Exception:
+                default_h = 0
+                default_m = 0
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Stop timer")
+        dlg.transient(self)
+        dlg.grab_set()
+
+        ttk.Label(dlg, text=f"Stop time: {now_dt.strftime('%Y-%m-%d %H:%M')}").grid(
+            row=0, column=0, columnspan=4, pady=(8, 4), padx=8
+        )
+
+        ttk.Label(dlg, text="Hours:").grid(row=1, column=0, sticky="e", padx=(8, 4))
+        hours_var = tk.IntVar(value=default_h)
+        hours_spin = ttk.Spinbox(dlg, from_=0, to=999, textvariable=hours_var, width=6)
+        hours_spin.grid(row=1, column=1, sticky="w")
+
+        ttk.Label(dlg, text="Minutes:").grid(row=1, column=2, sticky="e", padx=(8, 4))
+        mins_var = tk.IntVar(value=default_m)
+        mins_spin = ttk.Spinbox(dlg, from_=0, to=59, textvariable=mins_var, width=6)
+        mins_spin.grid(row=1, column=3, sticky="w")
+
+        ttk.Label(dlg, text="Notes:").grid(
+            row=2, column=0, sticky="nw", padx=8, pady=(8, 0)
+        )
+        notes_txt = tk.Text(dlg, width=50, height=6)
+        notes_txt.grid(row=2, column=1, columnspan=3, padx=8, pady=(8, 0))
+        notes_txt.insert("1.0", running.get("notes") or "")
+
+        def do_save():
+            h = hours_var.get()
+            m = mins_var.get()
+            # ensure minutes within 0-59
+            try:
+                m = int(m) % 60
+            except Exception:
+                m = 0
+            start_dt = now_dt - timedelta(hours=int(h), minutes=int(m))
+            start_iso = start_dt.isoformat() + "Z"
+            notes = notes_txt.get("1.0", tk.END).strip()
+            try:
+                conn = storage_sqlite._conn()
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE time_entries SET end_time = ?, start_time = ?, notes = ? WHERE id = ?",
+                    (now_iso, start_iso, notes, running.get("id")),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save time entry: {e}")
+            finally:
+                dlg.grab_release()
+                dlg.destroy()
+                self._timer_running = False
+                self.timer_btn.config(text="Start")
+                self.load_time_entries()
+
+        def do_cancel():
+            dlg.grab_release()
+            dlg.destroy()
+
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.grid(row=3, column=0, columnspan=4, pady=8)
+        ttk.Button(btn_frame, text="Save", command=do_save).pack(side="right", padx=8)
+        ttk.Button(btn_frame, text="Cancel", command=do_cancel).pack(side="right")
 
     def on_close(self):
         # if timer running, stop and record now
