@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from rsportal import storage_sqlite
 from .detail_view import TaskDetailWindow
+from .auth_dialog import AuthDialog
 
 
 class HomeView(ttk.Frame):
@@ -14,12 +15,11 @@ class HomeView(ttk.Frame):
         toolbar = ttk.Frame(self)
         toolbar.pack(fill="x", padx=8, pady=6)
 
+        # refresh button refresh the task list from local sqlite cache
         refresh_btn = ttk.Button(toolbar, text="Refresh", command=self.refresh)
         refresh_btn.pack(side="left")
 
-        sync_btn = ttk.Button(toolbar, text="Sync", command=self.sync_remote)
-        sync_btn.pack(side="left", padx=(6, 0))
-
+        # the sync button pulls the latest tasks from remote API
         ttk.Label(toolbar, text="Status:").pack(side="left", padx=(8, 4))
         self.status_combo = ttk.Combobox(
             toolbar,
@@ -45,6 +45,15 @@ class HomeView(ttk.Frame):
 
         # Initial load
         self.refresh()
+        # Updated toolbar with Login/Logout buttons
+        sync_btn = ttk.Button(toolbar, text="Sync", command=self.sync_remote)
+        sync_btn.pack(side="left", padx=(6, 0))
+
+        logout_btn = ttk.Button(toolbar, text="Logout", command=self.logout)
+        logout_btn.pack(side="right")
+
+        login_btn = ttk.Button(toolbar, text="Login", command=self.open_login)
+        login_btn.pack(side="right", padx=(6, 0))
 
     def refresh(self):
         # Refresh view from local sqlite cache (no remote network call)
@@ -103,6 +112,22 @@ class HomeView(ttk.Frame):
                 pass
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def open_login(self):
+        # Open auth dialog; on success, attempt a sync
+        def _on_success():
+            messagebox.showinfo("Logged in", "Authentication saved. Syncing tasks...")
+            self.sync_remote()
+
+        AuthDialog(self.root, on_success=_on_success)
+
+    def logout(self):
+        ok = storage_sqlite.clear_auth()
+        if ok:
+            messagebox.showinfo("Logged out", "Local credentials cleared.")
+            self.refresh()
+        else:
+            messagebox.showinfo("Not logged in", "No active local credentials were found.")
 
     def open_selected(self):
         sel = self.tree.selection()
