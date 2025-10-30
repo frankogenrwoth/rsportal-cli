@@ -1,18 +1,19 @@
-## RSportal cli
-this is a cli app for interacting with the rsportal platform from offline below are the folder structure
+## RSportal (GUI)
+RSportal is a graphical desktop application for interacting with the RSportal platform offline-first.
+
+Project layout (top-level):
 
 rsportal/
 ├─ rsportal/
 │  ├─ __init__.py
-│  ├─ cli.py          ← argparse entry point
-│  ├─ commands/
-│  │   ├─ __init__.py
-│  │   ├─ time_cmd.py
-│  │   ├─ log_cmd.py
-│  │   ├─ tasks_cmd.py
-│  │   └─ push_cmd.py
-│  ├─ utils.py
-│  └─ storage.py
-├─ pyproject.toml      ← for packaging (or setup.py)
-└─ main.py             ← entry script (calls cli.main())
+│  ├─ gui/
+│  │  ├─ app.py        ← GUI entry and application bootstrap
+│  │  ├─ auth_dialog.py
+│  │  ├─ home_view.py
+│  │  └─ ...
+│  ├─ storage_sqlite.py
+│  ├─ storage.py
+│  └─ commands/        ← legacy command handlers (kept for reference)
+├─ pyproject.toml
+└─ main.py             ← entry script (now launches GUI)
 

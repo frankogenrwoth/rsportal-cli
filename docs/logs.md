@@ -1,7 +1,7 @@
 ## Logs
 
-- Detailed entries: `python main.py log show [-t TASK-123]`
-- Summaries per task: `python main.py log summary`
+- Detailed entries and summaries are available from the Logs view in the GUI.
+- Use the Logs view filters to narrow by task or time range; click a task to view per-task logs.
 
 Formatting:
-- Human-readable durations; running entries show as RUNNING
+- Human-readable durations; running entries show as RUNNING in the UI.

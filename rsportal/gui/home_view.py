@@ -1,3 +1,4 @@
+import json
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -35,11 +36,21 @@ class HomeView(ttk.Frame):
         open_btn.pack(side="right")
 
         # Treeview
-        cols = ("id", "title", "status", "deadline")
+        cols = (
+            "id",
+            "title",
+            "project",
+            "category",
+            "status",
+            "deadline",
+            "assignee",
+            "urgency",
+        )
         self.tree = ttk.Treeview(self, columns=cols, show="headings")
         for c in cols:
             self.tree.heading(c, text=c.title())
             self.tree.column(c, width=200 if c == "title" else 120)
+
         self.tree.pack(fill="both", expand=True, padx=8, pady=8)
         self.tree.bind("<Double-1>", lambda e: self.open_selected())
 
@@ -63,14 +74,26 @@ class HomeView(ttk.Frame):
         for i in self.tree.get_children():
             self.tree.delete(i)
         for t in tasks:
+            project = json.loads(t.get("project")) or ""
+            project = project.get("name") if isinstance(project, dict) else str(project)
+            assignee = json.loads(t.get("assignee")) or ""
+            assignee = (
+                assignee.get("username")
+                if isinstance(assignee, dict)
+                else str(assignee)
+            )
             self.tree.insert(
                 "",
                 "end",
                 values=(
                     t.get("id"),
                     t.get("title"),
+                    project,
+                    t.get("category"),
                     t.get("status"),
                     t.get("deadline"),
+                    assignee,
+                    t.get("urgency"),
                 ),
             )
 
@@ -127,7 +150,9 @@ class HomeView(ttk.Frame):
             messagebox.showinfo("Logged out", "Local credentials cleared.")
             self.refresh()
         else:
-            messagebox.showinfo("Not logged in", "No active local credentials were found.")
+            messagebox.showinfo(
+                "Not logged in", "No active local credentials were found."
+            )
 
     def open_selected(self):
         sel = self.tree.selection()

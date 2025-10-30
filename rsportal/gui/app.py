@@ -24,7 +24,7 @@ def run_app():
     if not is_authenticated():
         messagebox.showinfo(
             "Authentication",
-            "No active authenticated user found. Please run 'rsportal auth --login' in the terminal or use the CLI to authenticate.\n\nGUI will continue in offline mode.",
+            "No active authenticated user found. Please sign in using the application's Authentication dialog (Open 'Sign in' or use the Auth menu). GUI will continue in offline mode.",
         )
 
     container = ttk.Frame(root)

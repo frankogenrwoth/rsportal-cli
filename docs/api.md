@@ -28,4 +28,5 @@
 - Server computes duration; client may include it if accepted.
 
 ### Auth
-- Uses credentials from CLI login; provide Authorization header as required (Basic/Bearer).
+- The GUI uses credentials saved by the application (saved to the app storage and optionally to the system keyring).
+- When making requests the client will provide appropriate credentials (Basic or session cookies) as needed.

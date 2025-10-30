@@ -1,19 +1,12 @@
 ## Pull & Push
 
-Pull tasks from server:
-```
-python main.py pull tasks
-```
-- Requires `RSPORTAL_API_BASE`
-- Merges server data with local notes (preserves `description`)
+The application provides Pull and Push (Sync) actions in the GUI:
 
-Push time entries (mock sync):
-```
-python main.py push sync
-python main.py push status
-```
-- Synces completed entries only
-- Stores sync history in `~/.rsportal/sync_log.json`
- - Only entries for tasks with both a non-empty title and description are pushed
-  - (Title + Objective) are required; Description refers to Objective in backend terms
-  - If entries are skipped, the CLI prints how many were skipped and why
+- Pull tasks: use the "Pull" action in the Tasks view to fetch assigned tasks from the server.
+    - Requires `RSPORTAL_API_BASE` (set via environment or application configuration).
+    - Server data is merged with local notes managed in the app.
+
+- Push (sync) time entries: use the Sync or Push button in the Time/Sync view.
+    - The GUI syncs completed entries only and will present the result in the UI.
+    - Sync history and metadata are recorded in the application storage (SQLite DB at `~/.rsportal/rsportal.db`).
+    - The UI will show skipped entries and reasons when entries are not eligible for push.

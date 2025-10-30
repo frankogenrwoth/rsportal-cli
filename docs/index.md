@@ -1,4 +1,4 @@
-# RSportal CLI Documentation
+# RSportal Desktop (GUI) Documentation
 
 - [Quickstart](./quickstart.md)
 - [Configuration](./configuration.md)
