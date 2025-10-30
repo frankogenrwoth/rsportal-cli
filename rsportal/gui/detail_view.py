@@ -1,6 +1,7 @@
 import json
 import tkinter as tk
 from tkinter import ttk, messagebox
+from pathlib import Path
 import threading
 import time
 from datetime import datetime, timedelta
@@ -121,13 +122,216 @@ class TaskDetailWindow(tk.Toplevel):
         # Comments tab
         cm_frame = ttk.Frame(tabs)
         tabs.add(cm_frame, text="Comments")
-        self.comment_txt = tk.Text(cm_frame, height=5)
-        self.comment_txt.pack(fill="x", padx=8, pady=8)
-        add_c_btn = ttk.Button(cm_frame, text="Add Comment", command=self.add_comment)
-        add_c_btn.pack(padx=8, pady=4)
+
+        self.comments_canvas = tk.Canvas(
+            cm_frame, borderwidth=0, highlightthickness=0, height=200
+        )
+        self.comments_container = ttk.Frame(self.comments_canvas)
+        self.comments_window = self.comments_canvas.create_window(
+            (0, 0), window=self.comments_container, anchor="nw"
+        )
+
+        self.comments_vsb = ttk.Scrollbar(
+            cm_frame, orient="vertical", command=self.comments_canvas.yview
+        )
+        self.comments_canvas.configure(yscrollcommand=self.comments_vsb.set)
+        self.comments_vsb.pack(side="right", fill="y", padx=(0, 4))
+        self.comments_canvas.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+
+        def _on_container_config(event):
+            try:
+                self.comments_canvas.configure(
+                    scrollregion=self.comments_canvas.bbox("all")
+                )
+            except Exception:
+                pass
+
+        def _on_canvas_config(event):
+            try:
+                self.comments_canvas.itemconfig(self.comments_window, width=event.width)
+            except Exception:
+                pass
+
+        self.comments_container.bind("<Configure>", _on_container_config)
+        self.comments_canvas.bind("<Configure>", _on_canvas_config)
+
+        # Input area: comment Text and Add button close together at the bottom
+        input_frame = ttk.Frame(cm_frame)
+        input_frame.pack(fill="x", padx=8, pady=(4, 8))
+
+        self.comment_txt = tk.Text(input_frame, height=4)
+        self.comment_txt.pack(side="left", fill="x", expand=True)
+
+        add_c_btn = ttk.Button(
+            input_frame, text="Add Comment", command=self.add_comment
+        )
+        add_c_btn.pack(side="right", padx=(8, 0))
+
+        # Load and render existing comments
+        self.load_comments()
 
         documentation_frame = ttk.Frame(tabs)
         tabs.add(documentation_frame, text="Documentation")
+
+        # --- Documentation form (saved to docs/) ---
+        # We'll create a scrollable form similar to comments UI because it's long
+        self.docs_canvas = tk.Canvas(
+            documentation_frame, borderwidth=0, highlightthickness=0, height=300
+        )
+        self.docs_container = ttk.Frame(self.docs_canvas)
+        self.docs_window = self.docs_canvas.create_window(
+            (0, 0), window=self.docs_container, anchor="nw"
+        )
+
+        self.docs_vsb = ttk.Scrollbar(
+            documentation_frame, orient="vertical", command=self.docs_canvas.yview
+        )
+        self.docs_canvas.configure(yscrollcommand=self.docs_vsb.set)
+        self.docs_vsb.pack(side="right", fill="y", padx=(0, 4))
+        self.docs_canvas.pack(fill="both", expand=True, padx=8, pady=(8, 4))
+
+        def _on_docs_container_config(event):
+            try:
+                self.docs_canvas.configure(scrollregion=self.docs_canvas.bbox("all"))
+            except Exception:
+                pass
+
+        def _on_docs_canvas_config(event):
+            try:
+                self.docs_canvas.itemconfig(self.docs_window, width=event.width)
+            except Exception:
+                pass
+
+        self.docs_container.bind("<Configure>", _on_docs_container_config)
+        self.docs_canvas.bind("<Configure>", _on_docs_canvas_config)
+
+        # Form fields
+        self.doc_fields = {}
+
+        def add_text_field(key, label_text, hint=None, rows=4):
+            frame = ttk.Frame(self.docs_container)
+            frame.pack(fill="x", pady=6, padx=8)
+            lbl = ttk.Label(frame, text=label_text)
+            lbl.pack(anchor="w")
+            txt = tk.Text(frame, height=rows)
+            txt.pack(fill="x", pady=(4, 0))
+            if hint:
+                hint_lbl = ttk.Label(frame, text=hint, font=(None, 8))
+                hint_lbl.pack(anchor="w", pady=(2, 0))
+            self.doc_fields[key] = txt
+
+        def add_entry_field(key, label_text, hint=None):
+            frame = ttk.Frame(self.docs_container)
+            frame.pack(fill="x", pady=6, padx=8)
+            lbl = ttk.Label(frame, text=label_text)
+            lbl.pack(anchor="w")
+            ent = ttk.Entry(frame)
+            ent.pack(fill="x", pady=(4, 0))
+            if hint:
+                hint_lbl = ttk.Label(frame, text=hint, font=(None, 8))
+                hint_lbl.pack(anchor="w", pady=(2, 0))
+            self.doc_fields[key] = ent
+
+        # Mirror fields from the provided HTML
+        add_text_field(
+            "objective",
+            "Objective (Diagnosis)",
+            "What’s the goal/problem?",
+            rows=4,
+        )
+        add_text_field(
+            "summary",
+            "Summary (Treatment Outcome)",
+            "1–3 sentences describing what was done + result.",
+            rows=4,
+        )
+        add_text_field(
+            "key_files_modules_modified",
+            "Key Files / Modules Modified",
+            "List repos, files, or modules changed",
+            rows=4,
+        )
+        add_text_field(
+            "functions_classes_endpoints",
+            "Functions / Classes / Endpoints",
+            "Details on specific code changes and their purpose",
+            rows=4,
+        )
+        add_text_field(
+            "architectural_structural_changes",
+            "Architectural / Structural Changes",
+            "e.g., Database schema, API design, etc.",
+            rows=4,
+        )
+        add_entry_field(
+            "git_commits_pr_links",
+            "Git Commits / PR Links",
+            "Provide direct links to commits or pull requests",
+        )
+        add_text_field(
+            "data_flow_integrations",
+            "Data Flow / Integrations",
+            "Explain how data moves across systems",
+            rows=4,
+        )
+        add_text_field(
+            "testing_validation_steps",
+            "Testing / Validation Steps",
+            "e.g., Unit tests, API calls, logs to check",
+            rows=4,
+        )
+        add_text_field(
+            "expected_result",
+            "Expected Result",
+            "Conditions for a successful run",
+            rows=4,
+        )
+        add_text_field(
+            "impact_on_other_systems",
+            "Impact on Other Systems",
+            "Dependencies that were affected",
+            rows=4,
+        )
+        add_text_field(
+            "handoff_notes",
+            "Handoff Notes",
+            "What the next developer should know",
+            rows=4,
+        )
+        add_text_field(
+            "supporting_media",
+            "Supporting Media",
+            "Links to diagrams, screenshots, logs",
+            rows=4,
+        )
+
+        # Buttons: Save and Reload
+        btn_frame = ttk.Frame(self.docs_container)
+        btn_frame.pack(fill="x", pady=8, padx=8)
+        save_btn = ttk.Button(
+            btn_frame,
+            text="Save Documentation",
+            command=lambda: self.save_documentation(),
+        )
+        save_btn.pack(side="right", padx=(8, 0))
+        reload_btn = ttk.Button(
+            btn_frame, text="Reload", command=lambda: self.load_documentation()
+        )
+        reload_btn.pack(side="right")
+
+        # Initialize docs file path details
+        self._docs_dir = Path(__file__).resolve().parents[2] / "docs"
+        # ensure docs dir exists
+        try:
+            self._docs_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        # load existing documentation for this task (if present)
+        try:
+            self.load_documentation()
+        except Exception:
+            pass
 
         self._timer_running = False
         self._timer_start_ts = None
@@ -184,6 +388,146 @@ class TaskDetailWindow(tk.Toplevel):
                 "", "end", iid=iid, values=(synced, start_fmt, end_fmt, dur, notes)
             )
 
+    def load_comments(self):
+        """Load comments from sqlite and render them in the comments container.
+        Comments authored by the current saved user appear on the right, others on the left.
+        """
+        # clear existing widgets
+        for child in list(self.comments_container.winfo_children()):
+            child.destroy()
+
+        # get saved username if available
+        saved = storage_sqlite.get_saved_auth()
+        saved_username = saved.get("username") if saved else None
+
+        try:
+            conn = storage_sqlite._conn()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, author, comment, created_at FROM comments WHERE task_id = ? ORDER BY created_at ASC",
+                (self.task_id,),
+            )
+            rows = cur.fetchall()
+            conn.close()
+        except Exception:
+            rows = []
+
+        for r in rows:
+            # r may be sqlite3.Row or tuple
+            if hasattr(r, "keys"):
+                author = r[1]
+                comment = r[2]
+                created = r[3]
+            else:
+                author = r[1]
+                comment = r[2]
+                created = r[3]
+
+            is_me = False
+            if author is None and saved_username is None:
+                is_me = True
+            elif saved_username and author == saved_username:
+                is_me = True
+
+            # container for single comment
+            row_frame = ttk.Frame(self.comments_container)
+            # visual bubble
+            bubble = tk.Label(
+                row_frame,
+                text=comment,
+                justify="left",
+                wraplength=420,
+                bg="#e6f0ff" if is_me else "#f0f0f0",
+                relief="groove",
+                padx=8,
+                pady=6,
+            )
+            meta = ttk.Label(
+                row_frame, text=(f"{author or 'me'} • {created}"), font=(None, 8)
+            )
+
+            if is_me:
+                # pack to right
+                row_frame.pack(fill="x", pady=4, padx=8)
+                bubble.pack(side="right", anchor="e")
+                meta.pack(side="right", anchor="e", pady=(2, 0))
+            else:
+                row_frame.pack(fill="x", pady=4, padx=8)
+                bubble.pack(side="left", anchor="w")
+                meta.pack(side="left", anchor="w", pady=(2, 0))
+
+        # scroll to bottom
+        try:
+            self.comments_canvas.update_idletasks()
+            self.comments_canvas.yview_moveto(1.0)
+        except Exception:
+            pass
+
+    def save_documentation(self):
+        """saving documentation writes the json data to the sqlite db"""
+
+        """Collect fields and save a JSON and a markdown copy under docs/"""
+        data = {}
+        for key, widget in self.doc_fields.items():
+            try:
+                if isinstance(widget, tk.Text):
+                    val = widget.get("1.0", tk.END).strip()
+                else:
+                    val = widget.get().strip()
+            except Exception:
+                try:
+                    val = widget.get().strip()
+                except Exception:
+                    val = ""
+            data[key] = val
+
+        try:
+            conn_id = storage_sqlite._conn()
+            cur = conn_id.cursor()
+            cur.execute(
+                "UPDATE tasks SET documentation = ? WHERE id = ?",
+                (json.dumps(data, indent=2), self.task_id),
+            )
+            conn_id.commit()
+            conn_id.close()
+
+            messagebox.showinfo("Saved", f"Documentation saved successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", "Failed to save documentation")
+
+    def load_documentation(self):
+        """reload the documentation from the database."""
+        try:
+            conn_id = storage_sqlite._conn()
+            cur = conn_id.cursor()
+            cur.execute(
+                "SELECT documentation, author FROM tasks WHERE id = ?",
+                (self.task_id,),
+            )
+            row = cur.fetchone()
+            doc_json = row[0] if row else None
+
+            conn_id.commit()
+            conn_id.close()
+
+        except Exception:
+            doc_json = None
+            pass
+
+        docs = json.loads(doc_json) if doc_json else {}
+
+        for key, widget in self.doc_fields.items():
+            val = docs.get(key, "")
+            try:
+                if isinstance(widget, tk.Text):
+                    widget.delete("1.0", tk.END)
+                    widget.insert("1.0", val)
+                else:
+                    widget.delete(0, tk.END)
+                    widget.insert(0, val)
+            except Exception:
+                pass
+
     def on_status_change(self, event=None):
         """Handler called when the status combobox value changes. Update local task
         dict and persist to sqlite using storage_sqlite.upsert_tasks.
@@ -202,23 +546,31 @@ class TaskDetailWindow(tk.Toplevel):
             return
         # save to sqlite comments table
         try:
+            # prefer to save the active username when available
+            saved = storage_sqlite.get_saved_auth()
+            author = saved.get("username") if saved else None
             conn_id = storage_sqlite._conn()
             cur = conn_id.cursor()
             cur.execute(
                 "INSERT INTO comments (task_id, author, comment) VALUES (?, ?, ?)",
-                (self.task_id, None, txt),
+                (self.task_id, author, txt),
             )
             conn_id.commit()
             conn_id.close()
             self.comment_txt.delete("1.0", tk.END)
             messagebox.showinfo("Saved", "Comment saved locally.")
+            # refresh comment list
+            try:
+                self.load_comments()
+            except Exception:
+                pass
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save comment: {e}")
 
     def toggle_timer(self):
         if not self._timer_running:
             # start
-            self._timer_start_ts = datetime.utcnow().isoformat() + "Z"
+            self._timer_start_ts = datetime.now(datetime.timezone.utc).isoformat() + "Z"
             storage_sqlite.save_time_entry(
                 self.task_id, self._timer_start_ts, None, "Started from GUI"
             )
@@ -229,9 +581,6 @@ class TaskDetailWindow(tk.Toplevel):
         else:
             # stop last running entry for this task
             now = datetime.utcnow().isoformat() + "Z"
-            # Ask user for optional notes and allow adjusting duration (hours/minutes)
-            # Stopping time (now) is used as the reference point; the user edits hours/minutes
-            # which adjusts the start_time relative to now.
             self.stop_entry_with_dialog(now)
 
     def _tick_loop(self):
