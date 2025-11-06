@@ -59,6 +59,10 @@ class HomeView(ttk.Frame):
         # Updated toolbar with Login/Logout buttons
         sync_btn = ttk.Button(toolbar, text="Sync", command=self.sync_remote)
         sync_btn.pack(side="left", padx=(6, 0))
+        push_btn = ttk.Button(
+            toolbar, text="PUSH TO REMOTE", command=self.push_to_remote
+        )
+        push_btn.pack(side="left", padx=(6, 0))
 
         logout_btn = ttk.Button(toolbar, text="Logout", command=self.logout)
         logout_btn.pack(side="right")

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import json
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -6,7 +7,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from rsportal import storage_sqlite
-
+from enum import Enum
 
 tz = timezone(timedelta(hours=3, minutes=0))  # UTC+3 (Uganda, kampala)
 
@@ -23,6 +24,8 @@ class TaskDetailWindow(tk.Toplevel):
             "id": self.task_id,
             "title": "",
         }
+
+        self.documentation_json = self.task.get("documentation", {})
 
         header = ttk.Frame(self)
         header.pack(fill="both", padx=8, pady=8)
@@ -216,8 +219,16 @@ class TaskDetailWindow(tk.Toplevel):
             frame.pack(fill="x", pady=6, padx=8)
             lbl = ttk.Label(frame, text=label_text)
             lbl.pack(anchor="w")
-            txt = tk.Text(frame, height=rows)
+            txt = tk.Text(frame, height=rows, wrap="word")
             txt.pack(fill="x", pady=(4, 0))
+
+            def on_text_change(event):
+                content = txt.get("1.0", tk.END)
+                self.documentation_json[key] = content.strip()
+                print("Text changed:", self.documentation_json)
+
+            txt.bind("<KeyRelease>", on_text_change)
+
             if hint:
                 hint_lbl = ttk.Label(frame, text=hint, font=(None, 8))
                 hint_lbl.pack(anchor="w", pady=(2, 0))
@@ -235,78 +246,598 @@ class TaskDetailWindow(tk.Toplevel):
                 hint_lbl.pack(anchor="w", pady=(2, 0))
             self.doc_fields[key] = ent
 
-        # Mirror fields from the provided HTML
+        task_category = self.task.get("category") or "MAINTENANCE"
+
+        class CategoryChoices(Enum):
+            MAINTENANCE = "MAINTENANCE"
+            RESEARCH = "RESEARCH"
+            AUTOMATION = "AUTOMATION"
+            WEBSITE = "WEBSITE"
+            CODING = "CODING"
+            MARKETING = "MARKETING"
+            DESIGN = "DESIGN"
+            SALES = "SALES"
+            TESTING = "TESTING"
+            GENERAL = "GENERAL"
+
         add_text_field(
             "objective",
             "Objective (Diagnosis)",
             "What’s the goal/problem?",
             rows=4,
         )
+
         add_text_field(
             "summary",
             "Summary (Treatment Outcome)",
             "1–3 sentences describing what was done + result.",
             rows=4,
         )
-        add_text_field(
-            "key_files_modules_modified",
-            "Key Files / Modules Modified",
-            "List repos, files, or modules changed",
-            rows=4,
-        )
-        add_text_field(
-            "functions_classes_endpoints",
-            "Functions / Classes / Endpoints",
-            "Details on specific code changes and their purpose",
-            rows=4,
-        )
-        add_text_field(
-            "architectural_structural_changes",
-            "Architectural / Structural Changes",
-            "e.g., Database schema, API design, etc.",
-            rows=4,
-        )
-        add_entry_field(
-            "git_commits_pr_links",
-            "Git Commits / PR Links",
-            "Provide direct links to commits or pull requests",
-        )
-        add_text_field(
-            "data_flow_integrations",
-            "Data Flow / Integrations",
-            "Explain how data moves across systems",
-            rows=4,
-        )
-        add_text_field(
-            "testing_validation_steps",
-            "Testing / Validation Steps",
-            "e.g., Unit tests, API calls, logs to check",
-            rows=4,
-        )
-        add_text_field(
-            "expected_result",
-            "Expected Result",
-            "Conditions for a successful run",
-            rows=4,
-        )
-        add_text_field(
-            "impact_on_other_systems",
-            "Impact on Other Systems",
-            "Dependencies that were affected",
-            rows=4,
-        )
-        add_text_field(
-            "handoff_notes",
-            "Handoff Notes",
-            "What the next developer should know",
-            rows=4,
-        )
-        add_text_field(
-            "supporting_media",
-            "Supporting Media",
-            "Links to diagrams, screenshots, logs",
-            rows=4,
-        )
+
+        match task_category.upper():
+            case CategoryChoices.MAINTENANCE.value | "MAINTENANCE":
+                add_entry_field(
+                    "system_module_maintained",
+                    "System/Module Maintained",
+                    "Which system, service, or infra was maintained?",
+                )
+                add_text_field(
+                    "issue_identified",
+                    "Issue Identified",
+                    "e.g., server downtime, bug, outdated dependency",
+                    rows=4,
+                )
+                add_text_field(
+                    "steps_taken",
+                    "Steps Taken",
+                    "Describe fixes, patches, or updates applied",
+                    rows=4,
+                )
+                add_text_field(
+                    "preventive_measures",
+                    "Preventive Measures",
+                    "e.g., monitoring, alerts, docs update",
+                    rows=4,
+                )
+                add_text_field(
+                    "key_decisions_trade_offs",
+                    "Key Decisions / Trade-offs",
+                    "Why this fix vs. alternatives?",
+                    rows=4,
+                )
+                add_text_field(
+                    "validation_test_steps",
+                    "Validation / Test Steps",
+                    "How you confirmed the fix worked (e.g., run health check)",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_other_systems",
+                    "Impact on Other Systems",
+                    "Did this affect other services?",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes_next_steps",
+                    "Handoff Notes / Next Steps",
+                    "Anything the next person should know?",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to screenshots or log snippets if helpful",
+                    rows=4,
+                )
+
+            case CategoryChoices.RESEARCH.value | "RESEARCH":
+                add_text_field(
+                    "scope_methodology",
+                    "Scope & Methodology",
+                    "How research was conducted (e.g., articles, experiments)",
+                    rows=4,
+                )
+                add_text_field(
+                    "key_findings_takeaways",
+                    "Key Findings / Takeaways",
+                    "Summarize discoveries in bullet points",
+                    rows=4,
+                )
+                add_text_field(
+                    "sources_references",
+                    "Sources & References",
+                    "Links to papers, docs, articles, tools",
+                    rows=4,
+                )
+                add_text_field(
+                    "practical_application",
+                    "Practical Application",
+                    "How can this knowledge be used in our projects?",
+                    rows=4,
+                )
+                add_text_field(
+                    "limitations_open_questions",
+                    "Limitations / Open Questions",
+                    "Anything unresolved or needing further study?",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes",
+                    "Handoff Notes",
+                    "What should the next researcher/teammate know?",
+                    rows=4,
+                )
+            case CategoryChoices.AUTOMATION.value | "AUTOMATION":
+                add_entry_field(
+                    "platform_used",
+                    "Platform Used",
+                    "e.g., n8n, Make.com, Zapier, Other",
+                )
+                add_entry_field(
+                    "workflows_modified_created",
+                    "Workflow(s) Modified / Created",
+                    "Direct link(s) to specific workflows",
+                )
+                add_text_field(
+                    "key_changes_made",
+                    "Key Changes Made",
+                    "List nodes/steps added, removed, or reconfigured",
+                    rows=4,
+                )
+                add_text_field(
+                    "data_structure_changes",
+                    "Data Structure Changes",
+                    "Describe data transformations or mapping adjustments",
+                    rows=4,
+                )
+                add_entry_field(
+                    "credentials_connections_used",
+                    "Credentials / Connections Used",
+                    "Reference name only—no secrets (e.g., 'Google OAuth (Prod)')",
+                )
+                add_text_field(
+                    "trigger_condition",
+                    "Trigger Condition",
+                    "What starts the automation? (e.g., new row in sheet, webhook call)",
+                    rows=3,
+                )
+                add_text_field(
+                    "expected_outcome",
+                    "Expected Outcome",
+                    "What the automation should do once triggered",
+                    rows=3,
+                )
+                add_text_field(
+                    "validation_test_steps",
+                    "Validation / Test Steps",
+                    "Step-by-step instructions for testing",
+                    rows=4,
+                )
+                add_text_field(
+                    "error_handling",
+                    "Error Handling",
+                    "How failures are managed (retries, alerts, etc.)",
+                    rows=3,
+                )
+                add_text_field(
+                    "impact_on_other_systems",
+                    "Impact on Other Systems",
+                    "What systems/tools this automation touches or affects",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes_next_steps",
+                    "Handoff Notes / Next Steps",
+                    "What the next teammate needs to know to continue",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to screenshots, workflow diagrams, GIFs",
+                    rows=4,
+                )
+            case CategoryChoices.WEBSITE.value | "WEBSITE":
+                add_text_field(
+                    "pages_sections_modified",
+                    "Pages / Sections Modified",
+                    "Which part of the website was changed",
+                    rows=4,
+                )
+                add_text_field(
+                    "content_ui_changes",
+                    "Content / UI Changes",
+                    "Brief description of visible changes",
+                    rows=4,
+                )
+                add_text_field(
+                    "backend_cms_changes",
+                    "Backend / CMS Changes",
+                    "e.g., WordPress, Webflow, custom CMS updates",
+                    rows=4,
+                )
+                add_text_field(
+                    "seo_performance_updates",
+                    "SEO / Performance Updates",
+                    "What was optimized",
+                    rows=4,
+                )
+                add_text_field(
+                    "testing_validation_steps",
+                    "Testing / Validation Steps",
+                    "Steps for QA: device testing, browser testing, SEO check",
+                    rows=4,
+                )
+                add_text_field(
+                    "expected_result",
+                    "Expected Result",
+                    "e.g., 'Page loads under 2s,' 'Navigation works on mobile'",
+                    rows=3,
+                )
+                add_text_field(
+                    "impact_on_other_systems",
+                    "Impact on Other Systems",
+                    "What else may be affected",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes",
+                    "Handoff Notes",
+                    "Anything the next dev/designer should know",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to screenshots (before/after), Lighthouse report, etc.",
+                    rows=4,
+                )
+            case CategoryChoices.CODING.value | "CODING":
+                add_text_field(
+                    "key_files_modules_modified",
+                    "Key Files / Modules Modified",
+                    "List repos, files, or modules changed",
+                    rows=4,
+                )
+                add_text_field(
+                    "functions_classes_endpoints",
+                    "Functions / Classes / Endpoints",
+                    "Details on specific code changes and their purpose",
+                    rows=4,
+                )
+                add_text_field(
+                    "architectural_structural_changes",
+                    "Architectural / Structural Changes",
+                    "e.g., Database schema, API design, etc.",
+                    rows=4,
+                )
+                add_entry_field(
+                    "git_commits_pr_links",
+                    "Git Commits / PR Links",
+                    "Provide direct links to commits or pull requests",
+                )
+                add_text_field(
+                    "data_flow_integrations",
+                    "Data Flow / Integrations",
+                    "Explain how data moves across systems",
+                    rows=4,
+                )
+                add_text_field(
+                    "testing_validation_steps",
+                    "Testing / Validation Steps",
+                    "e.g., Unit tests, API calls, logs to check",
+                    rows=4,
+                )
+                add_text_field(
+                    "expected_result",
+                    "Expected Result",
+                    "Conditions for a successful run",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_other_systems",
+                    "Impact on Other Systems",
+                    "Dependencies that were affected",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes",
+                    "Handoff Notes",
+                    "What the next developer should know",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to diagrams, screenshots, logs",
+                    rows=4,
+                )
+
+            case CategoryChoices.MARKETING.value | "MARKETING":
+                add_text_field(
+                    "target_audience_segment",
+                    "Target Audience / Segment",
+                    "Define the audience for this initiative",
+                    rows=4,
+                )
+                add_text_field(
+                    "channels_platforms_used",
+                    "Channels / Platforms Used",
+                    "e.g., Email, LinkedIn, Google Ads, Social, etc.",
+                    rows=4,
+                )
+                add_text_field(
+                    "campaign_assets",
+                    "Campaign Assets",
+                    "Links to creatives, copy docs, videos",
+                    rows=4,
+                )
+                add_text_field(
+                    "messaging_positioning_rationale",
+                    "Messaging / Positioning Rationale",
+                    "Why these choices were made",
+                    rows=4,
+                )
+                add_text_field(
+                    "metrics_kpis",
+                    "Metrics / KPIs",
+                    "What success looks like (e.g., clicks, signups, engagement)",
+                    rows=4,
+                )
+                add_text_field(
+                    "testing_validation_steps",
+                    "Testing / Validation Steps",
+                    "e.g., QA, A/B test setup, review approvals",
+                    rows=4,
+                )
+                add_text_field(
+                    "expected_result",
+                    "Expected Result",
+                    "e.g., 'CTR > 5%,' '500 signups'",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_brand_product",
+                    "Impact on Brand / Product",
+                    "How this affects larger goals",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes",
+                    "Handoff Notes",
+                    "What the next marketer should know",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to ad previews, campaign screenshots",
+                    rows=4,
+                )
+
+            case CategoryChoices.DESIGN.value | "DESIGN":
+                add_entry_field(
+                    "tools_used",
+                    "Tools Used",
+                    "e.g., Figma, Illustrator, Photoshop, etc.",
+                )
+                add_entry_field(
+                    "design_files_boards",
+                    "Design Files / Boards",
+                    "Direct link to Figma/XD boards",
+                )
+                add_text_field(
+                    "key_design_decisions",
+                    "Key Design Decisions",
+                    "Why certain UI/UX choices were made",
+                    rows=4,
+                )
+                add_text_field(
+                    "user_flow_prototypes",
+                    "User Flow / Prototypes",
+                    "Brief flow description and links to prototypes",
+                    rows=4,
+                )
+                add_text_field(
+                    "assets_for_handoff",
+                    "Assets for Handoff",
+                    "Where to find exported assets and design specs",
+                    rows=4,
+                )
+                add_text_field(
+                    "testing_validation_steps",
+                    "Testing / Validation Steps",
+                    "e.g., Prototype click-through, accessibility check, QA review",
+                    rows=4,
+                )
+                add_text_field(
+                    "expected_result",
+                    "Expected Result",
+                    "Design requirements fulfilled, intuitive flow",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_development_product",
+                    "Impact on Development / Product",
+                    "Dependencies with the development team",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes",
+                    "Handoff Notes",
+                    "What the next designer or developer should know",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to screenshots, prototype GIFs",
+                    rows=4,
+                )
+
+            case CategoryChoices.SALES.value | "SALES":
+                add_entry_field(
+                    "client_lead",
+                    "Client / Lead",
+                    "Name and company of the client or lead",
+                )
+                add_entry_field(
+                    "stage_in_pipeline",
+                    "Stage in Pipeline",
+                    "e.g., Prospect, Discovery, Proposal, Negotiation, Closed-Won",
+                )
+                add_text_field(
+                    "actions_taken",
+                    "Actions Taken",
+                    "e.g., Meetings, calls, demos, emails sent",
+                    rows=4,
+                )
+                add_text_field(
+                    "key_notes_insights",
+                    "Key Notes & Insights",
+                    "Pain points, client objections, buying signals, decision-makers",
+                    rows=4,
+                )
+                add_text_field(
+                    "proposal_offer_details",
+                    "Proposal / Offer Details",
+                    "Pricing, terms, or packages discussed",
+                    rows=4,
+                )
+                add_text_field(
+                    "tools_platforms_used",
+                    "Tools / Platforms Used",
+                    "e.g., CRM, email tool, LinkedIn, HubSpot",
+                    rows=4,
+                )
+                add_text_field(
+                    "outcome_current_status",
+                    "Outcome / Current Status",
+                    "What was achieved? Where does it stand?",
+                    rows=4,
+                )
+                add_text_field(
+                    "next_steps_owner",
+                    "Next Steps & Owner",
+                    "Follow-up actions and the responsible person",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_targets_kpis",
+                    "Impact on Targets / KPIs",
+                    "How this affects quota, pipeline health, or revenue forecast",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_documents_media",
+                    "Supporting Documents / Media",
+                    "Link to proposal deck, call recording, contract draft",
+                    rows=4,
+                )
+
+            case CategoryChoices.TESTING.value | "TESTING":
+                add_entry_field(
+                    "application_module_tested",
+                    "Application / Module Tested",
+                    "Which app, feature, or module was under test?",
+                )
+                add_entry_field(
+                    "test_environment",
+                    "Test Environment",
+                    "e.g., Staging, Production, Local, Device type, Browser versions",
+                )
+                add_entry_field(
+                    "test_type",
+                    "Test Type",
+                    "e.g., Unit, Integration, Functional, Regression, UAT",
+                )
+                add_text_field(
+                    "test_cases_executed",
+                    "Test Cases Executed",
+                    "List or link to test case IDs",
+                    rows=4,
+                )
+                add_text_field(
+                    "steps_taken",
+                    "Steps Taken",
+                    "Outline the testing procedure step by step",
+                    rows=4,
+                )
+                add_text_field(
+                    "issues_bugs_found",
+                    "Issues / Bugs Found",
+                    "Summarize defects with IDs/links to the bug tracker",
+                    rows=4,
+                )
+                add_text_field(
+                    "validation_results",
+                    "Validation & Results",
+                    "Pass/Fail details with screenshots/logs if applicable",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_other_systems",
+                    "Impact on Other Systems",
+                    "What dependencies or integrations could be affected?",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes_next_steps",
+                    "Handoff Notes / Next Steps",
+                    "What should developers or QA know moving forward?",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to screenshots, test reports, video recordings",
+                    rows=4,
+                )
+
+            case CategoryChoices.GENERAL.value | "GENERAL":
+                add_text_field(
+                    "steps_taken",
+                    "Steps Taken",
+                    "List what was done step by step",
+                    rows=4,
+                )
+                add_text_field(
+                    "key_decisions_rationale",
+                    "Key Decisions / Rationale",
+                    "Why these steps were chosen over alternatives",
+                    rows=4,
+                )
+                add_text_field(
+                    "validation",
+                    "Validation",
+                    "How do we know this is complete? (e.g., shared with team)",
+                    rows=4,
+                )
+                add_text_field(
+                    "impact_on_other_systems_processes",
+                    "Impact on Other Systems/Processes",
+                    "Does this affect other workstreams?",
+                    rows=4,
+                )
+                add_text_field(
+                    "handoff_notes",
+                    "Handoff Notes",
+                    "Anything the next person needs to continue?",
+                    rows=4,
+                )
+                add_text_field(
+                    "supporting_media",
+                    "Supporting Media",
+                    "Links to screenshots, files, attachments",
+                    rows=4,
+                )
+            case _:
+                add_text_field(
+                    "general_notes",
+                    "General Notes",
+                    "Any relevant information about the task.",
+                    rows=4,
+                )
 
         # Buttons: Save and Reload
         btn_frame = ttk.Frame(self.docs_container)
@@ -347,7 +878,7 @@ class TaskDetailWindow(tk.Toplevel):
         # Clear existing
         for iid in list(self.te_tree.get_children()):
             self.te_tree.delete(iid)
-            
+
         entries = storage_sqlite.get_time_entries(self.task_id)
         for e in entries:
             start = e.get("start_time")
@@ -470,27 +1001,12 @@ class TaskDetailWindow(tk.Toplevel):
     def save_documentation(self):
         """saving documentation writes the json data to the sqlite db"""
 
-        """Collect fields and save a JSON and a markdown copy under docs/"""
-        data = {}
-        for key, widget in self.doc_fields.items():
-            try:
-                if isinstance(widget, tk.Text):
-                    val = widget.get("1.0", tk.END).strip()
-                else:
-                    val = widget.get().strip()
-            except Exception:
-                try:
-                    val = widget.get().strip()
-                except Exception:
-                    val = ""
-            data[key] = val
-
         try:
             conn_id = storage_sqlite._conn()
             cur = conn_id.cursor()
             cur.execute(
                 "UPDATE tasks SET documentation = ? WHERE id = ?",
-                (json.dumps(data, indent=2), self.task_id),
+                (json.dumps(self.documentation_json, indent=2), self.task_id),
             )
             conn_id.commit()
             conn_id.close()
