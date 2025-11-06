@@ -111,6 +111,13 @@ class HomeView(ttk.Frame):
             pass
 
     def sync_remote(self):
+        # i am going to take local timing as priority over remote
+        # comments
+        # documentation
+        # time entries
+        # unique tasks
+
+
         # Run remote refresh in a background thread to avoid blocking UI
         def _worker():
             self._set_toolbar_state(False)
@@ -121,11 +128,23 @@ class HomeView(ttk.Frame):
                 count = 0
                 err = e
 
+            try:
+                time_entry_count = storage_sqlite.refresh_time_entries_from_remote()
+                time_entry_err = None
+            except Exception as e:
+                time_entry_count = 0
+                time_entry_err = e
+
             def _done():
                 self._set_toolbar_state(True)
                 self.refresh()
                 if err:
                     messagebox.showerror("Sync Failed", f"Failed to sync: {err}")
+                elif time_entry_err:
+                    messagebox.showerror(
+                        "Sync Partial",
+                        f"Tasks synced: {count}\nTime Entries sync failed: {time_entry_err}",
+                    )
                 else:
                     messagebox.showinfo("Synced", f"Pulled {count} tasks from server.")
 

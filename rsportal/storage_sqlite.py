@@ -1,6 +1,7 @@
 import sqlite3
 import json
 from pathlib import Path
+import requests
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from . import __init__ as _pkg  # noqa: F401 (keep package context)
@@ -122,13 +123,6 @@ def save_auth(username: str, password: str, force: bool = False) -> bool:
     Returns True when saved/activated or already active with same creds.
     Returns False when there is an active different auth and force is False.
     """
-    # validate if user exists
-
-    try:
-        import requests
-    except Exception:
-        return False
-
     base_url: str = get_api_base()
     auth_url: str = f"{base_url}/auth/check"
 
@@ -177,6 +171,61 @@ def clear_auth() -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+def upsert_time_entries(entries: List[Dict[str, Any]]):
+    conn: sqlite3.Connection = _conn()
+    cur: sqlite3.Cursor = conn.cursor()
+
+    def _norm_field(v: Any) -> Any:
+        # Normalize values so sqlite bindings accept them: primitives pass through;
+        # dicts/lists are JSON-serialized to strings.
+        if v is None:
+            return None
+        if isinstance(v, (str, int, float)):
+            return v
+        try:
+            # sqlite does accept bytes, but we will store complex types as JSON strings
+            return json.dumps(v)
+        except Exception:
+            return str(v)
+
+    conn = _conn()
+    cur = conn.cursor()
+
+    for e in entries:
+        eid = e.get("id")
+        if not eid:
+            continue
+        cur.execute("SELECT id FROM time_entries WHERE id = ?", (eid,))
+        exists = cur.fetchone()
+        params = (
+            eid,
+            _norm_field(e.get("task_id")),
+            _norm_field(e.get("user")),
+            _norm_field(e.get("start_time")),
+            _norm_field(e.get("end_time")),
+            _norm_field(e.get("notes")),
+            1 if e.get("synced") else 0,
+        )
+        if exists:
+            cur.execute(
+                """
+            UPDATE time_entries SET task_id=?, user=?, start_time=?, end_time=?, notes=?, synced=?
+            WHERE id=?
+            """,
+                params[1:] + (params[0],),
+            )
+        else:
+            cur.execute(
+                """
+            INSERT INTO time_entries (id, task_id, user, start_time, end_time, notes, synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                params,
+            )
+    conn.commit()
+    conn.close()
 
 
 def upsert_tasks(tasks: List[Dict[str, Any]]):
@@ -289,15 +338,73 @@ def get_task(task_id: str) -> Optional[Dict[str, Any]]:
     return d
 
 
-def refresh_tasks_from_remote() -> int:
-    """Fetch tasks from remote API and upsert into sqlite. Returns number of tasks pulled."""
+def refresh_comments_from_remote() -> int:
+    """Fetch comments from remote API and upsert into sqlite. Returns number of comments pulled."""
+    # Placeholder implementation
+
+    return 0
+
+
+def refresh_documentation_from_remote() -> int:
+    """Fetch documentation from remote API and upsert into sqlite. Returns number of documentations pulled."""
+    # Placeholder implementation
+    return 0
+
+
+def refresh_time_entries_from_remote() -> int:
+    """Fetch time entries from remote API and upsert into sqlite. Returns number of time entries pulled."""
+    # Placeholder implementation
+    url: str = f"{get_api_base()}/time/entries"
     try:
-        import requests
+        saved: Union[None, Dict[str, str]] = get_saved_auth()
+        if saved:
+            resp = requests.get(
+                url, timeout=30, auth=(saved.get("username"), saved.get("password"))
+            )
+            if resp.status_code == 401:
+                return 0
+            if resp.status_code == 403:
+                return 0
+        else:
+            session = get_authed_session()
+            if session is not None:
+                resp = session.get(url, timeout=30)
+            else:
+                auth = get_basic_auth()
+                resp = requests.get(url, timeout=30, auth=auth if all(auth) else None)
+
+        if resp.status_code != 200:
+            return 0
+        remote_entries = resp.json()
     except Exception:
         return 0
 
+    merged_time_entries = []
+    for re in remote_entries:
+        eid = re.get("id")
+        if not eid:
+            continue
+        merged_time_entries.append(
+            {
+                "id": eid,
+                "task_id": re.get("task"),
+                "user": re.get("user"),
+                "start_time": re.get("start_time"),
+                "end_time": re.get("end_time"),
+                "notes": re.get("notes"),
+                "synced": True,
+            }
+        )
+
+    upsert_time_entries(merged_time_entries)
+    return len(merged_time_entries)
+
+
+def refresh_tasks_from_remote() -> int:
+    """Fetch tasks from remote API and upsert into sqlite. Returns number of tasks pulled."""
     base: str = get_api_base()
     url: str = f"{base}/tasks/assigned"
+
     try:
         # Prefer saved sqlite auth (GUI-managed) when available
         saved: Union[None, Dict[str, str]] = get_saved_auth()

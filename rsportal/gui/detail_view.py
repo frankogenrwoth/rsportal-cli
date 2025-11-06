@@ -347,6 +347,7 @@ class TaskDetailWindow(tk.Toplevel):
         # Clear existing
         for iid in list(self.te_tree.get_children()):
             self.te_tree.delete(iid)
+            
         entries = storage_sqlite.get_time_entries(self.task_id)
         for e in entries:
             start = e.get("start_time")
