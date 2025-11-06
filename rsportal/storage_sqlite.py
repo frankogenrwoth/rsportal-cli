@@ -345,11 +345,6 @@ def refresh_comments_from_remote() -> int:
     return 0
 
 
-def refresh_documentation_from_remote() -> int:
-    """Fetch documentation from remote API and upsert into sqlite. Returns number of documentations pulled."""
-    # Placeholder implementation
-    return 0
-
 
 def refresh_time_entries_from_remote() -> int:
     """Fetch time entries from remote API and upsert into sqlite. Returns number of time entries pulled."""
