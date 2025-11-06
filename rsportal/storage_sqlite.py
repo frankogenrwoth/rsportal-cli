@@ -315,12 +315,6 @@ def upsert_comments(comments: List[Dict[str, Any]]):
         except Exception:
             return str(v)
 
-    cur.execute("ALTER TABLE comments ADD COLUMN synced INTEGER DEFAULT 0")
-    conn.commit()
-    conn.close()
-    conn = _conn()
-    cur = conn.cursor()
-
     for c in comments:
         cid = c.get("id")
         if not cid:
@@ -352,6 +346,165 @@ def upsert_comments(comments: List[Dict[str, Any]]):
             )
     conn.commit()
     conn.close()
+
+
+def push_local_changes_to_remote() -> int:
+    """Push local changes (tasks, time entries, comments) to remote API. Returns number of items pushed."""
+    conn = _conn()
+    cur = conn.cursor()
+
+    tasks = []
+    cur.execute("SELECT * FROM tasks WHERE synced = 0")
+    rows = cur.fetchall()
+    for r in rows:
+        d = dict(r)
+        try:
+            d["documentation"] = json.loads(d.get("documentation") or "{}")
+        except Exception:
+            d["documentation"] = {}
+        tasks.append(d)
+
+    time_entries = []
+    cur.execute("SELECT * FROM time_entries WHERE synced = 0")
+    rows = cur.fetchall()
+    for r in rows:
+        d = dict(r)
+        try:
+            d["description"] = json.loads(d.get("description") or "{}")
+        except Exception:
+            d["description"] = {}
+        time_entries.append(d)
+
+    comments = []
+    cur.execute("SELECT * FROM comments WHERE synced = 0")
+    rows = cur.fetchall()
+    for r in rows:
+        d = dict(r)
+        try:
+            d["comment"] = d.get("comment")
+        except Exception:
+            d["comment"] = ""
+        comments.append(d)
+
+    task_url = f"{get_api_base()}/tasks/sync"
+    time_entry_url = f"{get_api_base()}/time/entries/sync"
+    comment_url = f"{get_api_base()}/comments/sync"
+
+    try:
+        saved: Union[None, Dict[str, str]] = get_saved_auth()
+
+        # helper to validate response codes
+        def _is_success_status(code: int) -> bool:
+            return code in (200, 201, 204)
+
+        if saved:
+            username = saved.get("username")
+            password = saved.get("password")
+
+            resp = requests.post(
+                task_url,
+                json={"tasks": tasks},
+                auth=(username, password),
+                timeout=30,
+            )
+            if resp.status_code in (401, 403):
+                return 0
+            if not _is_success_status(resp.status_code):
+                return 0
+            else:
+                cur.execute("UPDATE tasks SET synced = 1 WHERE synced = 0")
+
+            resp = requests.post(
+                time_entry_url,
+                json={"time_entries": time_entries},
+                auth=(username, password),
+                timeout=30,
+            )
+            if resp.status_code in (401, 403):
+                return 0
+            if not _is_success_status(resp.status_code):
+                return 0
+            else:
+                cur.execute("UPDATE time_entries SET synced = 1 WHERE synced = 0")
+
+            resp = requests.post(
+                comment_url,
+                json={"comments": comments},
+                auth=(username, password),
+                timeout=30,
+            )
+            if resp.status_code in (401, 403):
+                return 0
+            if not _is_success_status(resp.status_code):
+                return 0
+            else:
+                cur.execute("UPDATE comments SET synced = 1 WHERE synced = 0")
+        else:
+            # Try authed session, fall back to basic auth
+            session = get_authed_session()
+            if session is not None:
+                resp = session.post(task_url, json={"tasks": tasks}, timeout=30)
+                if resp.status_code in (401, 403):
+                    return 0
+                if not _is_success_status(resp.status_code):
+                    return 0
+
+                resp = session.post(
+                    time_entry_url, json={"time_entries": time_entries}, timeout=30
+                )
+                if resp.status_code in (401, 403):
+                    return 0
+                if not _is_success_status(resp.status_code):
+                    return 0
+
+                resp = session.post(
+                    comment_url, json={"comments": comments}, timeout=30
+                )
+                if resp.status_code in (401, 403):
+                    return 0
+                if not _is_success_status(resp.status_code):
+                    return 0
+            else:
+                auth = get_basic_auth()
+                auth_param = auth if all(auth) else None
+
+                resp = requests.post(
+                    task_url, json={"tasks": tasks}, timeout=30, auth=auth_param
+                )
+                if resp.status_code in (401, 403):
+                    return 0
+                if not _is_success_status(resp.status_code):
+                    return 0
+
+                resp = requests.post(
+                    time_entry_url,
+                    json={"time_entries": time_entries},
+                    timeout=30,
+                    auth=auth_param,
+                )
+                if resp.status_code in (401, 403):
+                    return 0
+                if not _is_success_status(resp.status_code):
+                    return 0
+                
+
+
+                resp = requests.post(
+                    comment_url,
+                    json={"comments": comments},
+                    timeout=30,
+                    auth=auth_param,
+                )
+                if resp.status_code in (401, 403):
+                    return 0
+                if not _is_success_status(resp.status_code):
+                    return 0
+    except Exception:
+        return 0
+
+    conn.commit()
+    conn.close()
+    return 0  # Placeholder implementation
 
 
 def get_tasks(status: Optional[str] = None) -> List[Dict[str, Any]]:

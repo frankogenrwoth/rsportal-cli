@@ -177,6 +177,33 @@ class HomeView(ttk.Frame):
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    def push_to_remote(self):
+        def _push_worker():
+            self._set_toolbar_state(False)
+            try:
+                count = storage_sqlite.push_local_changes_to_remote()
+                err = None
+            except Exception as e:
+                count = 0
+                err = e
+
+            def _done():
+                self._set_toolbar_state(True)
+                self.refresh()
+                if err:
+                    messagebox.showerror("Push Failed", f"Failed to push: {err}")
+                else:
+                    messagebox.showinfo(
+                        "Pushed", f"Pushed {count} local changes to server."
+                    )
+
+            try:
+                self.root.after(0, _done)
+            except Exception:
+                pass
+
+        threading.Thread(target=_push_worker, daemon=True).start()
+
     def open_login(self):
         # Open auth dialog; on success, attempt a sync
         def _on_success():
