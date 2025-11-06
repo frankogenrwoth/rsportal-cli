@@ -4,8 +4,11 @@ from tkinter import ttk, messagebox
 from pathlib import Path
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from rsportal import storage_sqlite
+
+
+tz = timezone(timedelta(hours=3, minutes=0))  # UTC+3 (Uganda, kampala)
 
 
 class TaskDetailWindow(tk.Toplevel):
@@ -570,7 +573,7 @@ class TaskDetailWindow(tk.Toplevel):
     def toggle_timer(self):
         if not self._timer_running:
             # start
-            self._timer_start_ts = datetime.now(datetime.timezone.utc).isoformat() + "Z"
+            self._timer_start_ts = datetime.now(tz).isoformat() + "Z"
             storage_sqlite.save_time_entry(
                 self.task_id, self._timer_start_ts, None, "Started from GUI"
             )
@@ -578,9 +581,10 @@ class TaskDetailWindow(tk.Toplevel):
             self.timer_btn.config(text="Stop")
             self._timer_thread = threading.Thread(target=self._tick_loop, daemon=True)
             self._timer_thread.start()
+
         else:
             # stop last running entry for this task
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(tz).isoformat() + "Z"
             self.stop_entry_with_dialog(now)
 
     def _tick_loop(self):
@@ -598,7 +602,7 @@ class TaskDetailWindow(tk.Toplevel):
                     s = datetime.fromisoformat(
                         running.get("start_time").replace("Z", "")
                     )
-                    elapsed = datetime.utcnow() - s
+                    elapsed = datetime.now(tz) - s
                     hrs = int(elapsed.total_seconds() // 3600)
                     mins = int((elapsed.total_seconds() % 3600) // 60)
                     secs = int(elapsed.total_seconds() % 60)
@@ -635,9 +639,11 @@ class TaskDetailWindow(tk.Toplevel):
                 delta = now_dt - s
                 default_h = int(delta.total_seconds() // 3600)
                 default_m = int((delta.total_seconds() % 3600) // 60)
+                default_s = int(delta.total_seconds() % 60)
             except Exception:
                 default_h = 0
                 default_m = 0
+                default_s = 0
 
         dlg = tk.Toplevel(self)
         dlg.title("Stop timer")
@@ -656,7 +662,12 @@ class TaskDetailWindow(tk.Toplevel):
         ttk.Label(dlg, text="Minutes:").grid(row=1, column=2, sticky="e", padx=(8, 4))
         mins_var = tk.IntVar(value=default_m)
         mins_spin = ttk.Spinbox(dlg, from_=0, to=59, textvariable=mins_var, width=6)
-        mins_spin.grid(row=1, column=3, sticky="w")
+        mins_spin.grid(row=1, column=2, sticky="w")
+
+        ttk.Label(dlg, text="Seconds:").grid(row=1, column=2, sticky="e", padx=(8, 4))
+        secs_var = tk.IntVar(value=default_s)
+        secs_spin = ttk.Spinbox(dlg, from_=0, to=59, textvariable=secs_var, width=6)
+        secs_spin.grid(row=1, column=3, sticky="w")
 
         ttk.Label(dlg, text="Notes:").grid(
             row=2, column=0, sticky="nw", padx=8, pady=(8, 0)
@@ -668,12 +679,15 @@ class TaskDetailWindow(tk.Toplevel):
         def do_save():
             h = hours_var.get()
             m = mins_var.get()
+            s = secs_var.get()
             # ensure minutes within 0-59
             try:
                 m = int(m) % 60
+
             except Exception:
                 m = 0
-            start_dt = now_dt - timedelta(hours=int(h), minutes=int(m))
+                s = 0
+            start_dt = now_dt - timedelta(hours=int(h), minutes=int(m), seconds=int(s))
             start_iso = start_dt.isoformat() + "Z"
             notes = notes_txt.get("1.0", tk.END).strip()
             try:
