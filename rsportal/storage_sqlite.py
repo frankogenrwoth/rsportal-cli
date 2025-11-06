@@ -298,6 +298,62 @@ def upsert_tasks(tasks: List[Dict[str, Any]]):
     conn.close()
 
 
+def upsert_comments(comments: List[Dict[str, Any]]):
+    conn: sqlite3.Connection = _conn()
+    cur: sqlite3.Cursor = conn.cursor()
+
+    def _norm_field(v: Any) -> Any:
+        # Normalize values so sqlite bindings accept them: primitives pass through;
+        # dicts/lists are JSON-serialized to strings.
+        if v is None:
+            return None
+        if isinstance(v, (str, int, float)):
+            return v
+        try:
+            # sqlite does accept bytes, but we will store complex types as JSON strings
+            return json.dumps(v)
+        except Exception:
+            return str(v)
+
+    cur.execute("ALTER TABLE comments ADD COLUMN synced INTEGER DEFAULT 0")
+    conn.commit()
+    conn.close()
+    conn = _conn()
+    cur = conn.cursor()
+
+    for c in comments:
+        cid = c.get("id")
+        if not cid:
+            continue
+        cur.execute("SELECT id FROM comments WHERE id = ?", (cid,))
+        exists = cur.fetchone()
+        params = (
+            cid,
+            _norm_field(c.get("task_id")),
+            _norm_field(c.get("author")),
+            _norm_field(c.get("comment")),
+            1 if c.get("synced") else 0,
+        )
+        if exists:
+            cur.execute(
+                """
+            UPDATE comments SET task_id=?, author=?, comment=?, synced=?
+            WHERE id=?
+            """,
+                params[1:] + (params[0],),
+            )
+        else:
+            cur.execute(
+                """
+            INSERT INTO comments (id, task_id, author, comment, synced)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+                params,
+            )
+    conn.commit()
+    conn.close()
+
+
 def get_tasks(status: Optional[str] = None) -> List[Dict[str, Any]]:
     init_db()
     conn = _conn()
@@ -338,12 +394,52 @@ def get_task(task_id: str) -> Optional[Dict[str, Any]]:
     return d
 
 
-def refresh_comments_from_remote() -> int:
+def refresh_comments_from_remote(task_id: int) -> int:
     """Fetch comments from remote API and upsert into sqlite. Returns number of comments pulled."""
     # Placeholder implementation
+    url: str = f"{get_api_base()}/tasks/{task_id}/comments"
 
-    return 0
+    try:
+        saved: Union[None, Dict[str, str]] = get_saved_auth()
+        if saved:
+            resp = requests.get(
+                url, timeout=30, auth=(saved.get("username"), saved.get("password"))
+            )
+            if resp.status_code == 401:
+                return 0
+            if resp.status_code == 403:
+                return 0
+        else:
+            session = get_authed_session()
+            if session is not None:
+                resp = session.get(url, timeout=30)
+            else:
+                auth = get_basic_auth()
+                resp = requests.get(url, timeout=30, auth=auth if all(auth) else None)
 
+        if resp.status_code != 200:
+            return 0
+        remote_comments = resp.json()
+    except Exception:
+        return 0
+
+    merged_comments = []
+    for rc in remote_comments:
+        cid = rc.get("id")
+        if not cid:
+            continue
+        merged_comments.append(
+            {
+                "id": cid,
+                "task_id": task_id,
+                "author": rc.get("author"),
+                "comment": rc.get("comment"),
+                "synced": True,
+            }
+        )
+
+    upsert_comments(merged_comments)
+    return len(merged_comments)
 
 
 def refresh_time_entries_from_remote() -> int:

@@ -117,7 +117,6 @@ class HomeView(ttk.Frame):
         # time entries
         # unique tasks
 
-
         # Run remote refresh in a background thread to avoid blocking UI
         def _worker():
             self._set_toolbar_state(False)
@@ -135,6 +134,20 @@ class HomeView(ttk.Frame):
                 time_entry_count = 0
                 time_entry_err = e
 
+            try:
+                comment_count = 0
+                tasks = storage_sqlite.get_tasks()
+
+                for t in tasks:
+                    storage_sqlite.refresh_comments_from_remote(int(t.get("id")))
+                    comment_count += 1
+
+                comment_err = None
+
+            except Exception as e:
+                comment_count = 0
+                comment_err = e
+
             def _done():
                 self._set_toolbar_state(True)
                 self.refresh()
@@ -144,6 +157,11 @@ class HomeView(ttk.Frame):
                     messagebox.showerror(
                         "Sync Partial",
                         f"Tasks synced: {count}\nTime Entries sync failed: {time_entry_err}",
+                    )
+                elif comment_err:
+                    messagebox.showerror(
+                        "Sync Partial",
+                        f"Tasks synced: {count}\nComments sync failed: {comment_err}",
                     )
                 else:
                     messagebox.showinfo("Synced", f"Pulled {count} tasks from server.")
