@@ -73,13 +73,13 @@ class HomeView(ttk.Frame):
 
     def refresh(self):
         """Refresh view from local sqlite cache (no remote network call) -> call all the local changes from the database."""
-        
+
         status = self.filter_var.get()
         tasks = storage_sqlite.get_tasks(status=status if status != "ALL" else None)
 
         for i in self.tree.get_children():
             self.tree.delete(i)
-            
+
         for t in tasks:
             project = json.loads(t.get("project")) or ""
             project = project.get("name") if isinstance(project, dict) else str(project)
@@ -119,10 +119,11 @@ class HomeView(ttk.Frame):
 
     def sync_remote(self):
         """
-        fetch tasks data from the remote db via the appropriate endpoints 
-        
+        fetch tasks data from the remote db via the appropriate endpoints
+
         run remote refresh in a background thread to avoid blocking UI
         """
+
         def _worker():
             self._set_toolbar_state(False)
             try:
@@ -136,6 +137,7 @@ class HomeView(ttk.Frame):
                 time_entry_count = storage_sqlite.refresh_time_entries_from_remote()
                 time_entry_err = None
             except Exception as e:
+                print(e, "error")
                 time_entry_count = 0
                 time_entry_err = e
 
@@ -144,8 +146,7 @@ class HomeView(ttk.Frame):
                 tasks = storage_sqlite.get_tasks()
 
                 for t in tasks:
-                    storage_sqlite.refresh_comments_from_remote(int(t.get("id")))
-                    comment_count += 1
+                    comment_count += storage_sqlite.refresh_comments_from_remote(int(t.get("id")))
 
                 comment_err = None
 
@@ -169,7 +170,7 @@ class HomeView(ttk.Frame):
                         f"Tasks synced: {count}\nComments sync failed: {comment_err}",
                     )
                 else:
-                    messagebox.showinfo("Synced", f"Pulled {count} tasks from server.")
+                    messagebox.showinfo("Synced", f"Pulled \n{count} tasks\n{time_entry_count} time entries\n{comment_count} comments\n from server.")
 
             try:
                 self.root.after(0, _done)

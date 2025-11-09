@@ -172,10 +172,11 @@ def clear_auth() -> bool:
     conn.close()
     return True
 
+
 def _norm_field(v: Any) -> Any:
     """
-        Normalize values so sqlite bindings accept them: primitives pass through;
-        dicts/lists are JSON-serialized to strings.
+    Normalize values so sqlite bindings accept them: primitives pass through;
+    dicts/lists are JSON-serialized to strings.
     """
     if v is None:
         return None
@@ -186,6 +187,7 @@ def _norm_field(v: Any) -> Any:
         return json.dumps(v)
     except Exception:
         return str(v)
+
 
 def upsert_time_entries(entries: List[Dict[str, Any]]):
     conn: sqlite3.Connection = _conn()
@@ -230,7 +232,6 @@ def upsert_tasks(tasks: List[Dict[str, Any]]):
     conn: sqlite3.Connection = _conn()
     cur: sqlite3.Cursor = conn.cursor()
 
-    
     for t in tasks:
         tid = str(t.get("id") or t.get("task_id") or "")
         if not tid:
@@ -280,6 +281,7 @@ def upsert_tasks(tasks: List[Dict[str, Any]]):
             """,
                 params,
             )
+
     conn.commit()
     conn.close()
 
@@ -521,7 +523,6 @@ def get_task(task_id: str) -> Optional[Dict[str, Any]]:
 
 def refresh_comments_from_remote(task_id: int) -> int:
     """Fetch comments from remote API and upsert into sqlite. Returns number of comments pulled."""
-    # Placeholder implementation
     url: str = f"{get_api_base()}/tasks/{task_id}/comments"
 
     try:
@@ -530,23 +531,13 @@ def refresh_comments_from_remote(task_id: int) -> int:
             resp = requests.get(
                 url, timeout=30, auth=(saved.get("username"), saved.get("password"))
             )
-            if resp.status_code == 401:
+            if resp.status_code == 401 or resp.status_code == 403:
                 return 0
-            if resp.status_code == 403:
-                return 0
-        else:
-            session = get_authed_session()
-            if session is not None:
-                resp = session.get(url, timeout=30)
-            else:
-                auth = get_basic_auth()
-                resp = requests.get(url, timeout=30, auth=auth if all(auth) else None)
 
-        if resp.status_code != 200:
-            return 0
         remote_comments = resp.json()
-    except Exception:
+    except Exception as e:
         return 0
+    
 
     merged_comments = []
     for rc in remote_comments:
@@ -569,8 +560,8 @@ def refresh_comments_from_remote(task_id: int) -> int:
 
 def refresh_time_entries_from_remote() -> int:
     """Fetch time entries from remote API and upsert into sqlite. Returns number of time entries pulled."""
-    # Placeholder implementation
     url: str = f"{get_api_base()}/time/entries"
+
     try:
         saved: Union[None, Dict[str, str]] = get_saved_auth()
         if saved:
@@ -581,16 +572,7 @@ def refresh_time_entries_from_remote() -> int:
                 return 0
             if resp.status_code == 403:
                 return 0
-        else:
-            session = get_authed_session()
-            if session is not None:
-                resp = session.get(url, timeout=30)
-            else:
-                auth = get_basic_auth()
-                resp = requests.get(url, timeout=30, auth=auth if all(auth) else None)
 
-        if resp.status_code != 200:
-            return 0
         remote_entries = resp.json()
     except Exception:
         return 0
@@ -603,7 +585,7 @@ def refresh_time_entries_from_remote() -> int:
         merged_time_entries.append(
             {
                 "id": eid,
-                "task_id": re.get("task"),
+                "task_id": re.get("task_id"),
                 "user": re.get("user"),
                 "start_time": re.get("start_time"),
                 "end_time": re.get("end_time"),
@@ -625,7 +607,9 @@ def refresh_tasks_from_remote() -> int:
         saved: Union[None, Dict[str, str]] = get_saved_auth()
 
         if saved:
-            resp = requests.get(url, timeout=30, auth=(saved.get("username"), saved.get("password")))
+            resp = requests.get(
+                url, timeout=30, auth=(saved.get("username"), saved.get("password"))
+            )
 
             if resp.status_code == 401:
                 return 0
