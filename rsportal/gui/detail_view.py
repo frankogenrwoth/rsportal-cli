@@ -944,7 +944,9 @@ class TaskDetailWindow(tk.Toplevel):
             )
 
     def load_comments(self):
-        """Load comments from sqlite and render them in the comments container.
+        """
+        Load comments from sqlite and render them in the comments container.
+
         Comments authored by the current saved user appear on the right, others on the left.
         """
         # clear existing widgets
@@ -970,11 +972,19 @@ class TaskDetailWindow(tk.Toplevel):
         for r in rows:
             # r may be sqlite3.Row or tuple
             if hasattr(r, "keys"):
-                author = r[1]
+                author = (
+                    r[1]
+                    if r[1].find("{") == -1
+                    else json.loads(r[1]).get("username", "anonymous")
+                )
                 comment = r[2]
                 created = r[3]
             else:
-                author = r[1]
+                author = (
+                    r[1]
+                    if r[1].find("{") == -1
+                    else json.loads(r[1]).get("username", "anonymous")
+                )
                 comment = r[2]
                 created = r[3]
 
