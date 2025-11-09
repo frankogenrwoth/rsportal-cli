@@ -185,6 +185,7 @@ class TaskDetailWindow(tk.Toplevel):
             documentation_frame, borderwidth=0, highlightthickness=0, height=300
         )
         self.docs_container = ttk.Frame(self.docs_canvas)
+        self.docs_container.pack(fill="both", expand=True)
         self.docs_window = self.docs_canvas.create_window(
             (0, 0), window=self.docs_container, anchor="nw"
         )
@@ -219,13 +220,21 @@ class TaskDetailWindow(tk.Toplevel):
             frame.pack(fill="x", pady=6, padx=8)
             lbl = ttk.Label(frame, text=label_text)
             lbl.pack(anchor="w")
-            txt = tk.Text(frame, height=rows, wrap="word")
+            txt = tk.Text(
+                frame,
+                height=rows,
+                wrap="word",
+            )
+            txt.after_idle(
+                lambda: txt.insert(tk.END, self.documentation_json.get(key, ""))
+            )
             txt.pack(fill="x", pady=(4, 0))
+
+            print(self.documentation_json.get(key, ""), "///")
 
             def on_text_change(event):
                 content = txt.get("1.0", tk.END)
                 self.documentation_json[key] = content.strip()
-                print("Text changed:", self.documentation_json)
 
             txt.bind("<KeyRelease>", on_text_change)
 
@@ -240,7 +249,18 @@ class TaskDetailWindow(tk.Toplevel):
             lbl = ttk.Label(frame, text=label_text)
             lbl.pack(anchor="w")
             ent = ttk.Entry(frame)
+            ent.after_idle(
+                lambda: ent.insert(tk.END, self.documentation_json.get(key, ""))
+            )
             ent.pack(fill="x", pady=(4, 0))
+
+            def on_text_change(event):
+                content = ent.get()
+                self.documentation_json[key] = content.strip()
+                print(self.documentation_json[key], "///")
+
+            ent.bind("<KeyRelease>", on_text_change)
+
             if hint:
                 hint_lbl = ttk.Label(frame, text=hint, font=(None, 8))
                 hint_lbl.pack(anchor="w", pady=(2, 0))
@@ -1004,15 +1024,18 @@ class TaskDetailWindow(tk.Toplevel):
         try:
             conn_id = storage_sqlite._conn()
             cur = conn_id.cursor()
+
             cur.execute(
                 "UPDATE tasks SET documentation = ? WHERE id = ?",
                 (json.dumps(self.documentation_json, indent=2), self.task_id),
             )
             conn_id.commit()
             conn_id.close()
+            print("hello")
 
             messagebox.showinfo("Saved", f"Documentation saved successfully.")
         except Exception as e:
+            print(e)
             messagebox.showerror("Error", "Failed to save documentation")
 
     def load_documentation(self):
