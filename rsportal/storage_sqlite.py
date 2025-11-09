@@ -172,26 +172,24 @@ def clear_auth() -> bool:
     conn.close()
     return True
 
+def _norm_field(v: Any) -> Any:
+    """
+        Normalize values so sqlite bindings accept them: primitives pass through;
+        dicts/lists are JSON-serialized to strings.
+    """
+    if v is None:
+        return None
+    if isinstance(v, (str, int, float)):
+        return v
+    try:
+        # sqlite does accept bytes, but we will store complex types as JSON strings
+        return json.dumps(v)
+    except Exception:
+        return str(v)
 
 def upsert_time_entries(entries: List[Dict[str, Any]]):
     conn: sqlite3.Connection = _conn()
     cur: sqlite3.Cursor = conn.cursor()
-
-    def _norm_field(v: Any) -> Any:
-        # Normalize values so sqlite bindings accept them: primitives pass through;
-        # dicts/lists are JSON-serialized to strings.
-        if v is None:
-            return None
-        if isinstance(v, (str, int, float)):
-            return v
-        try:
-            # sqlite does accept bytes, but we will store complex types as JSON strings
-            return json.dumps(v)
-        except Exception:
-            return str(v)
-
-    conn = _conn()
-    cur = conn.cursor()
 
     for e in entries:
         eid = e.get("id")
@@ -232,19 +230,7 @@ def upsert_tasks(tasks: List[Dict[str, Any]]):
     conn: sqlite3.Connection = _conn()
     cur: sqlite3.Cursor = conn.cursor()
 
-    def _norm_field(v: Any) -> Any:
-        # Normalize values so sqlite bindings accept them: primitives pass through;
-        # dicts/lists are JSON-serialized to strings.
-        if v is None:
-            return None
-        if isinstance(v, (str, int, float)):
-            return v
-        try:
-            # sqlite does accept bytes, but we will store complex types as JSON strings
-            return json.dumps(v)
-        except Exception:
-            return str(v)
-
+    
     for t in tasks:
         tid = str(t.get("id") or t.get("task_id") or "")
         if not tid:
@@ -301,19 +287,6 @@ def upsert_tasks(tasks: List[Dict[str, Any]]):
 def upsert_comments(comments: List[Dict[str, Any]]):
     conn: sqlite3.Connection = _conn()
     cur: sqlite3.Cursor = conn.cursor()
-
-    def _norm_field(v: Any) -> Any:
-        # Normalize values so sqlite bindings accept them: primitives pass through;
-        # dicts/lists are JSON-serialized to strings.
-        if v is None:
-            return None
-        if isinstance(v, (str, int, float)):
-            return v
-        try:
-            # sqlite does accept bytes, but we will store complex types as JSON strings
-            return json.dumps(v)
-        except Exception:
-            return str(v)
 
     for c in comments:
         cid = c.get("id")
@@ -486,8 +459,6 @@ def push_local_changes_to_remote() -> int:
                     return 0
                 if not _is_success_status(resp.status_code):
                     return 0
-                
-
 
                 resp = requests.post(
                     comment_url,
@@ -508,6 +479,7 @@ def push_local_changes_to_remote() -> int:
 
 
 def get_tasks(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """fetch all tasks from the local database based on there states"""
     init_db()
     conn = _conn()
     cur = conn.cursor()
@@ -522,7 +494,7 @@ def get_tasks(status: Optional[str] = None) -> List[Dict[str, Any]]:
     for r in rows:
         d = dict(r)
         try:
-            d["documentation"] = json.loads(d.get("documentation") or "{}")
+            d["documentation"] = json.loads(d.get("documentation") or {})
         except Exception:
             d["documentation"] = {}
         res.append(d)
@@ -646,36 +618,27 @@ def refresh_time_entries_from_remote() -> int:
 
 def refresh_tasks_from_remote() -> int:
     """Fetch tasks from remote API and upsert into sqlite. Returns number of tasks pulled."""
-    base: str = get_api_base()
-    url: str = f"{base}/tasks/assigned"
+
+    url: str = f"{get_api_base()}/tasks/assigned"
 
     try:
-        # Prefer saved sqlite auth (GUI-managed) when available
         saved: Union[None, Dict[str, str]] = get_saved_auth()
 
         if saved:
-            resp = requests.get(
-                url, timeout=30, auth=(saved.get("username"), saved.get("password"))
-            )
+            resp = requests.get(url, timeout=30, auth=(saved.get("username"), saved.get("password")))
+
             if resp.status_code == 401:
                 return 0
             if resp.status_code == 403:
                 return 0
-        else:
-            session = get_authed_session()
-            if session is not None:
-                resp = session.get(url, timeout=30)
-            else:
-                auth = get_basic_auth()
-                resp = requests.get(url, timeout=30, auth=auth if all(auth) else None)
-        if resp.status_code != 200:
-            return 0
+
         remote_tasks = resp.json()
+
     except Exception:
         return 0
 
-    # Transform into the merged shape used by pull_cmd
     merged = []
+
     for rt in remote_tasks:
         tid = rt.get("id")
         if not tid:

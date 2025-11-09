@@ -59,6 +59,7 @@ class HomeView(ttk.Frame):
         # Updated toolbar with Login/Logout buttons
         sync_btn = ttk.Button(toolbar, text="Sync", command=self.sync_remote)
         sync_btn.pack(side="left", padx=(6, 0))
+
         push_btn = ttk.Button(
             toolbar, text="PUSH TO REMOTE", command=self.push_to_remote
         )
@@ -71,12 +72,14 @@ class HomeView(ttk.Frame):
         login_btn.pack(side="right", padx=(6, 0))
 
     def refresh(self):
-        # Refresh view from local sqlite cache (no remote network call)
+        """Refresh view from local sqlite cache (no remote network call) -> call all the local changes from the database."""
+        
         status = self.filter_var.get()
         tasks = storage_sqlite.get_tasks(status=status if status != "ALL" else None)
-        # clear
+
         for i in self.tree.get_children():
             self.tree.delete(i)
+            
         for t in tasks:
             project = json.loads(t.get("project")) or ""
             project = project.get("name") if isinstance(project, dict) else str(project)
@@ -115,13 +118,11 @@ class HomeView(ttk.Frame):
             pass
 
     def sync_remote(self):
-        # i am going to take local timing as priority over remote
-        # comments
-        # documentation
-        # time entries
-        # unique tasks
-
-        # Run remote refresh in a background thread to avoid blocking UI
+        """
+        fetch tasks data from the remote db via the appropriate endpoints 
+        
+        run remote refresh in a background thread to avoid blocking UI
+        """
         def _worker():
             self._set_toolbar_state(False)
             try:
